@@ -21,6 +21,9 @@ Thumbs.db
 # Local DB backups
 *.db.bak
 *.db-journal
+*.db.lock
+*.db-wal
+*.db-shm
 
 # Accidentally downloaded files
 *.pkg

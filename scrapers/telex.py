@@ -6,7 +6,7 @@ Fallback: Shopify JSON API, then sitemap + product pages.
 import json
 import re
 from bs4 import BeautifulSoup
-from .utils import rate_limited_request, parse_storage, parse_ram
+from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
 from image_resolver import save_scraped_image
 
 BASE_URL = "https://www.telex.pk"

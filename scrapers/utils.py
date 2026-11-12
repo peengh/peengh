@@ -6,8 +6,9 @@ Shared scraper utilities.
 """
 import time
 import random
+import re
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from database import get_db
 
 # Global rate-limiting state
@@ -53,20 +54,20 @@ def rate_limited_request(url, store_slug, min_delay=2.0, max_delay=5.0, timeout=
     """
     global _store_last_request, _store_error_counts
 
-    # Check if store is paused (skip if DB not initialized)
+    row = None
     try:
         conn = get_db()
         row = conn.execute(
             "SELECT paused_until, error_count FROM retailers WHERE slug = ?", (store_slug,)
         ).fetchone()
         conn.close()
-
-        if row and row["paused_until"]:
-            paused_until = datetime.fromisoformat(row["paused_until"])
-            if datetime.utcnow() < paused_until:
-                raise RuntimeError(f"Store {store_slug} is paused until {paused_until}")
     except Exception:
-        pass  # DB not initialized yet, proceed without pause check
+        pass
+
+    if row and row["paused_until"]:
+        paused_until = parse_timestamp(row["paused_until"])
+        if datetime.now(timezone.utc) < paused_until:
+            raise RuntimeError(f"Store {store_slug} is paused until {paused_until.isoformat()}")
 
     for attempt in range(retries + 1):
         # Enforce per-store rate limit
@@ -103,7 +104,7 @@ def rate_limited_request(url, store_slug, min_delay=2.0, max_delay=5.0, timeout=
             return resp
 
         except requests.RequestException as e:
-            if attempt < retries and "429" in str(e):
+            if attempt < retries:
                 backoff = (2 ** attempt) * 5 + random.uniform(1, 3)
                 print(f"  [{store_slug}] Request error, retrying in {backoff:.1f}s...")
                 time.sleep(backoff)
@@ -149,24 +150,58 @@ def _reset_store_errors(store_slug):
         pass  # DB not initialized
 
 
+def _capacities(title):
+    return list(re.finditer(r'(\d+)\s*(GB|TB)', title or "", re.IGNORECASE))
+
+
 def parse_storage(title):
-    """Extract storage capacity from product title (e.g., '256GB')."""
-    import re
-    m = re.search(r'(\d+)\s*(GB|TB)', title, re.IGNORECASE)
-    if m:
-        num = int(m.group(1))
-        unit = m.group(2).upper()
-        return f"{num}{unit}"
-    return None
+    """Extract storage, excluding capacities explicitly labelled as RAM."""
+    matches = [
+        m for m in _capacities(title)
+        if not re.match(r'\s*RAM\b', title[m.end():], re.IGNORECASE)
+    ]
+    if not matches:
+        return None
+    match = matches[-1] if len(matches) > 1 else matches[0]
+    return f"{int(match.group(1))}{match.group(2).upper()}"
 
 
 def parse_ram(title):
-    """Extract RAM from product title (e.g., '12GB RAM')."""
-    import re
-    m = re.search(r'(\d+)\s*GB\s*RAM', title, re.IGNORECASE)
-    if m:
-        return f"{m.group(1)}GB"
+    """Extract RAM from labelled memory or a RAM/storage capacity pair."""
+    match = re.search(r'(\d+)\s*(GB|TB)\s*RAM\b', title or "", re.IGNORECASE)
+    if not match:
+        match = re.search(r'\bRAM\s*:?\s*(\d+)\s*(GB|TB)\b', title or "", re.IGNORECASE)
+    if match:
+        return f"{int(match.group(1))}{match.group(2).upper()}"
+    matches = _capacities(title)
+    if len(matches) > 1:
+        match = matches[0]
+        return f"{int(match.group(1))}{match.group(2).upper()}"
     return None
+
+
+def parse_price(price_text):
+    """Parse one PKR amount instead of concatenating old and current prices."""
+    if not price_text:
+        return None
+    match = re.search(r'(?:Rs\.?|PKR)?\s*(\d[\d,]*)', str(price_text), re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def parse_timestamp(value):
+    """Parse SQLite or ISO timestamps as UTC, including timezone-naive values."""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def check_price(store_slug, product_url):
@@ -192,13 +227,12 @@ def check_price(store_slug, product_url):
 
 
 def human_time_ago(dt_str):
-    """Convert ISO timestamp to 'X min/hours ago' string."""
+    """Convert an ISO or SQLite timestamp to a relative UTC age."""
     if not dt_str:
         return "Unknown"
     try:
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        now = datetime.utcnow().replace(tzinfo=dt.tzinfo if dt.tzinfo else None)
-        delta = now - dt
+        dt = parse_timestamp(dt_str)
+        delta = datetime.now(timezone.utc) - dt
         if delta.days > 0:
             return f"{delta.days} day{'s' if delta.days > 1 else ''} ago"
         hours = delta.seconds // 3600

@@ -5,7 +5,7 @@ Uses paginated category pages to fetch all products.
 import json
 import re
 from bs4 import BeautifulSoup
-from .utils import rate_limited_request, parse_storage, parse_ram
+from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
 from image_resolver import save_scraped_image
 
 BASE_URL = "https://priceoye.pk"
@@ -284,12 +284,7 @@ def _extract_products_from_soup(soup):
 
 
 def _parse_price(price_text):
-    if not price_text:
-        return None
-    cleaned = re.sub(r'[^\d]', '', price_text)
-    if cleaned and cleaned.isdigit():
-        return int(cleaned)
-    return None
+    return parse_price(price_text)
 
 
 def _extract_brand(title):

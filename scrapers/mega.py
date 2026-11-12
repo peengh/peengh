@@ -4,7 +4,7 @@ Falls back to sitemap + product pages if category pages fail.
 """
 import re
 from bs4 import BeautifulSoup
-from .utils import rate_limited_request, parse_storage, parse_ram
+from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
 from image_resolver import save_scraped_image
 
 BASE_URL = "https://www.mega.pk"
@@ -77,165 +77,90 @@ def scrape_category(category="mobiles"):
 def _scrape_paginated():
     """Scrape Mega.pk mobile category pages (paginated)."""
     all_results = []
-
-    # Try multiple category URLs
-    urls_to_try = [
-        ("mobiles-trend", "mobiles-trend"),
-        ("mobiles", "mobiles"),
-    ]
-
-    for cat_slug, cat_name in urls_to_try:
-        page = 1
-        empty_pages = 0
-        max_empty = 2
-
-        while empty_pages < max_empty:
-            url = f"{BASE_URL}/{cat_slug}/?page={page}"
-            print(f"  [Mega] Fetching {cat_name} page {page}: {url}")
-
+    for cat_slug in ("mobiles", "mobiles-trend"):
+        for page in range(1, 6):
+            path = f"/{cat_slug}/" if page == 1 else f"/{cat_slug}/{page}/"
+            url = BASE_URL + path
+            print(f"  [Mega] Fetching {cat_slug} page {page}: {url}")
             try:
-                resp = rate_limited_request(url, "mega",
-                                            min_delay=3.0, max_delay=6.0)
-                soup = BeautifulSoup(resp.text, "html.parser")
-                products = _extract_products_from_soup(soup)
+                resp = rate_limited_request(url, "mega", min_delay=2.0, max_delay=4.0)
+                products = _extract_products_from_soup(BeautifulSoup(resp.text, "html.parser"))
+            except Exception as exc:
+                print(f"  [Mega] Page {page} error: {exc}")
+                break
+            if not products:
+                break
+            print(f"  [Mega] Page {page}: {len(products)} products")
+            all_results.extend(products)
 
-                if products:
-                    print(f"  [Mega]   Page {page}: {len(products)} products")
-                    all_results.extend(products)
-                    empty_pages = 0
-                else:
-                    print(f"  [Mega]   Page {page}: 0 products")
-                    empty_pages += 1
-
-                if page >= 10:
-                    print(f"  [Mega]   Reached max page limit")
-                    break
-                page += 1
-
-            except Exception as e:
-                print(f"  [Mega]   Page {page} error: {e}")
-                empty_pages += 1
-                if empty_pages >= max_empty:
-                    break
-                page += 1
-
-    # Deduplicate by URL
-    seen = set()
-    unique = []
-    for p in all_results:
-        url = p.get("url", "")
-        if url and url not in seen:
-            seen.add(url)
-            unique.append(p)
-
+    unique = {}
+    for product in all_results:
+        if product.get("url"):
+            unique[product["url"]] = product
     print(f"  [Mega] Total unique from category pages: {len(unique)}")
-    return unique
+    return list(unique.values())
 
 
 def _extract_products_from_soup(soup):
     """Extract products from a Mega.pk category page BeautifulSoup object."""
+    cards = soup.select(".lap_thu_box")
+    if not cards:
+        for selector in (".productBox", ".product-item", ".product-card"):
+            cards = soup.select(selector)
+            if cards:
+                break
+
     results = []
-
-    # Mega.pk uses .productBox for product cards
-    selectors = [
-        ".productBox",
-        ".product-item",
-        ".product-card",
-        ".product",
-        "[class*='Product']",
-        "[class*='product']",
-    ]
-
-    cards = []
-    for sel in selectors:
-        cards = soup.select(sel)
-        if cards:
-            break
-
-    if not cards:
-        # Fallback: look for product links
-        links = soup.find_all("a", href=re.compile(r"/product/"))
-        if links:
-            cards = links[:50]
-
-    if not cards:
-        return []
-
     for card in cards:
-        try:
-            # Title
-            title_el = (card.select_one(".product-title") or
-                       card.select_one("h3, h4, .title") or
-                       card.select_one("img"))
-            title = ""
-            if title_el:
-                if title_el.name == "img":
-                    title = title_el.get("alt", "")
-                else:
-                    title = title_el.get_text(strip=True)
-            if not title or len(title) < 3:
-                continue
-
-            # Price
-            price = None
-            price_el = (card.select_one(".price") or
-                       card.select_one("[class*='price']"))
-            if price_el:
-                price = _parse_price(price_el.get_text(strip=True))
-
-            if not price:
-                # Try finding price in the whole card text
-                text = card.get_text()
-                match = re.search(r'Rs\.?\s*([\d,]+)', text)
-                if match:
-                    try:
-                        price = int(match.group(1).replace(",", ""))
-                    except ValueError:
-                        pass
-                if not price:
-                    nums = re.findall(r'\b[\d,]{5,6}\b', text)
-                    if nums:
-                        try:
-                            price = int(nums[0].replace(",", ""))
-                        except ValueError:
-                            pass
-
-            if not price:
-                continue
-
-            # URL
-            link_el = card if card.name == "a" else card.select_one("a")
-            product_url = ""
-            if link_el:
-                href = link_el.get("href", "")
-                if href.startswith("http"):
-                    product_url = href
-                elif href.startswith("/"):
-                    product_url = BASE_URL + href
-                else:
-                    product_url = f"{BASE_URL}/{href}"
-
-            # Image
-            image = ""
-            img_el = card.select_one("img")
-            if img_el:
-                image = img_el.get("data-src") or img_el.get("src", "")
-                if image.startswith("//"):
-                    image = "https:" + image
-                elif image.startswith("/"):
-                    image = BASE_URL + image
-
-            brand = _extract_brand(title)
-            results.append({"title": title, "price": price, "url": product_url,
-                           "image": image, "storage": parse_storage(title),
-                           "ram": parse_ram(title), "in_stock": True})
-            if image:
-                save_scraped_image(brand=brand, title=title, image_url=image,
-                                  source="mega", source_url=product_url)
-
-        except Exception:
+        title_el = card.select_one("#lap_name_div h3, .product-title, h3, h4, .title")
+        title = title_el.get_text(" ", strip=True) if title_el else ""
+        if len(title) < 3:
             continue
 
+        price = None
+        price_el = card.select_one(".cat_price, .price, [class*='price']")
+        if price_el:
+            price_soup = BeautifulSoup(str(price_el), "html.parser")
+            for old_price in price_soup.select(".was, .old-price, del"):
+                old_price.decompose()
+            price = parse_price(price_soup.get_text(" ", strip=True))
+        if not price:
+            amounts = re.findall(r'([\d,]+)\s*-?\s*(?:PKR|Rs\.?)', card.get_text(" ", strip=True), re.I)
+            if amounts:
+                price = parse_price(amounts[-1])
+        if not price:
+            continue
+
+        link = card.select_one("#lap_name_div a[href], a[href*='_products/'], a[href]")
+        if not link:
+            continue
+        href = link.get("href", "")
+        product_url = href if href.startswith("http") else f"{BASE_URL}/{href.lstrip('/')}"
+
+        image = ""
+        img = card.select_one("img")
+        if img:
+            image = img.get("data-src") or img.get("src", "")
+            if image.startswith("//"):
+                image = "https:" + image
+            elif image.startswith("/"):
+                image = BASE_URL + image
+
+        card_text = card.get_text(" ", strip=True)
+        brand = _extract_brand(title)
+        result = {
+            "title": title,
+            "price": price,
+            "url": product_url,
+            "image": image,
+            "storage": parse_storage(title) or parse_storage(card_text),
+            "ram": parse_ram(title) or parse_ram(card_text),
+            "in_stock": True,
+        }
+        results.append(result)
+        if image:
+            save_scraped_image(brand=brand, title=title, image_url=image,
+                               source="mega", source_url=product_url)
     return results
 
 
@@ -342,12 +267,7 @@ def _parse_product_page(url):
 
 
 def _parse_price(price_text):
-    if not price_text:
-        return None
-    cleaned = re.sub(r'[^\d]', '', price_text)
-    if cleaned and cleaned.isdigit():
-        return int(cleaned)
-    return None
+    return parse_price(price_text)
 
 
 def _extract_brand(title):

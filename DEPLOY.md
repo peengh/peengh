@@ -201,8 +201,8 @@ Prices update automatically every day at **11 AM Pakistan time**.
 ### 4.2 How it works
 
 1. GitHub Actions runs at 6 AM UTC (11 AM PKT) daily
-2. Scrapes TeleX + Mega.pk for latest prices
-3. Updates `peengh.db`
+2. Scrapes TeleX, Mega.pk, PriceOye, Shophive, and HomeShopping for latest prices
+3. Atomically updates `peengh.db` without deleting existing products or price history
 4. Commits the DB back to GitHub
 5. Render auto-deploys the updated DB within 2-3 minutes
 

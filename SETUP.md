@@ -7,8 +7,7 @@ The scraper works perfectly on your Mac, but returns 0 products from the cloud.
 
 ## The Solution
 
-**Option 1 (Recommended):** Run the scraper on your Mac daily at 12 PM Pakistan time.
-**Option 2 (Backup):** Use Playwright browser automation on GitHub Actions.
+Run either the single GitHub Actions schedule or the Mac scheduler. Do not enable both, because that would scrape the same retailers twice.
 
 ---
 
@@ -128,17 +127,16 @@ rm ~/Library/LaunchAgents/com.peengh.dailyscrape.plist
 
 ---
 
-### OPTION B: GitHub Actions with Playwright (Backup)
+### OPTION B: GitHub Actions
 
-This uses a real Chrome browser on GitHub's servers, which is harder for retailers to block.
+The repository has one scheduled workflow, **Daily Price Scrape**, which runs at 11 AM Pakistan time.
 
-1. Go to https://github.com/peengh/peengh/actions
-2. Click **"Daily Price Scrape (Playwright)"**
-3. Click **"Run workflow"**
-4. Wait 10-15 minutes
-5. Check if products were found
+1. Go to your repository's **Actions** tab.
+2. Click **"Daily Price Scrape"**.
+3. Click **"Run workflow"** to test it manually.
+4. Check the retailer counts and database commit in the workflow log.
 
-**Note:** This is slower than Mac scraping and may still be blocked. Use Option A as your primary method.
+A failed or empty scrape exits unsuccessfully and leaves the previous catalogue intact.
 
 ---
 
@@ -165,8 +163,8 @@ Then on Render: **Manual Deploy → Deploy latest commit**
 | Site shows 0 products | peengh.db not pushed | Run daily_update.py locally, then push |
 | Site shows 8 demos | Old demo database | Delete peengh.db, re-run daily_update.py |
 | TeleX returns 0 on Mac | Your IP temporarily blocked | Wait 10 min, try again |
-| Mega.pk returns 0 | Site uses anti-bot | Ignore it — PriceOye + TeleX are enough |
-| Mac automation not running | Mac was off at 12 PM | It runs when you turn it on, or use Option B |
+| A retailer returns 0 | Blocked request, changed markup, or retailer outage | Existing offers are preserved; check the next run and retailer status |
+| Mac automation not running | Mac was off at 12 PM | It runs when you turn it on, or use the GitHub workflow |
 | Git push fails | Wrong token | Check token has `repo` scope |
 
 ---
@@ -176,7 +174,6 @@ Then on Render: **Manual Deploy → Deploy latest commit**
 1. **Cross-store matching** — TeleX + PriceOye + Mega.pk merge into one product
 2. **Phone-only filter** — No TVs, washers, soundbars, cases
 3. **Tagline** — "Overpay Karna Mana Hai"
-4. **No demo fallback** — Shows warning if DB is empty
-5. **Fast scrapers** — PriceOye pagination, TeleX JSON API
-6. **Mac automation** — Daily 12 PM Pakistan time via LaunchAgent
-7. **Playwright backup** — GitHub Actions with real browser
+4. **No demo fallback** — Failed scrapes leave the existing catalogue intact
+5. **Durable updates** — Stable product IDs and preserved daily price history
+6. **Automation choice** — One GitHub Actions schedule or the macOS LaunchAgent

@@ -11,9 +11,11 @@ DATABASE = os.environ.get("DATABASE_PATH", "peengh.db")
 
 
 def get_db():
-    """Get a database connection with row factory."""
-    conn = sqlite3.connect(DATABASE)
+    """Get a database connection with integrity checks and a busy timeout."""
+    conn = sqlite3.connect(DATABASE, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
@@ -197,6 +199,23 @@ def init_db():
         cursor.execute("ALTER TABLE price_history ADD COLUMN offer_id INTEGER REFERENCES offers(id)")
         print("  [DB] Added offer_id column to price_history table")
 
+    cursor.execute("""
+        DELETE FROM product_images
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM product_images
+            GROUP BY brand, model_key, COALESCE(color, ''),
+                     COALESCE(storage_variant, ''), source
+        )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_images_identity
+        ON product_images (
+            brand, model_key, COALESCE(color, ''),
+            COALESCE(storage_variant, ''), source
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -296,9 +315,16 @@ def seed_official_images():
 
     for brand, model_key, color, storage, url, source, confidence in official_images:
         cursor.execute("""
-            INSERT OR REPLACE INTO product_images
+            INSERT INTO product_images
             (brand, model_key, color, storage_variant, image_url, source, is_verified, confidence_score, updated_at, expires_at, is_active)
             VALUES (?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now', '+90 days'), 1)
+            ON CONFLICT DO UPDATE SET
+                image_url = excluded.image_url,
+                is_verified = 1,
+                confidence_score = excluded.confidence_score,
+                updated_at = datetime('now'),
+                expires_at = datetime('now', '+90 days'),
+                is_active = 1
         """, (brand, model_key, color, storage, url, source, confidence))
 
     conn.commit()

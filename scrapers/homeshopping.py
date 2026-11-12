@@ -5,7 +5,7 @@ Fallback: Sitemap + product pages.
 """
 import re
 from bs4 import BeautifulSoup
-from .utils import rate_limited_request, parse_storage, parse_ram
+from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
 from image_resolver import save_scraped_image
 
 BASE_URL = "https://www.homeshopping.pk"
@@ -79,12 +79,13 @@ def _scrape_via_pagination(category, limit):
     results = []
     page = 1
 
-    # Try multiple URL patterns
+    category_paths = {
+        "mobile-phones": "/mobile-phone---tablets/mobile-phones",
+    }
+    category_path = category_paths.get(category, f"/{category}")
     url_patterns = [
-        f"{BASE_URL}/{category}?page={{page}}",
-        f"{BASE_URL}/{category}?p={{page}}",
-        f"{BASE_URL}/products/category/{category}?page={{page}}",
-        f"{BASE_URL}/category/{category}?page={{page}}",
+        f"{BASE_URL}{category_path}?page={{page}}",
+        f"{BASE_URL}{category_path}?p={{page}}",
     ]
 
     working_pattern = None

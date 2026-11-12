@@ -5,7 +5,7 @@ Fallback: Sitemap + product pages.
 """
 import re
 from bs4 import BeautifulSoup
-from .utils import rate_limited_request, parse_storage, parse_ram
+from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
 from image_resolver import save_scraped_image
 
 BASE_URL = "https://www.shophive.com"
@@ -105,9 +105,9 @@ def _parse_category_page(soup):
     results = []
 
     # Method 1: Standard product grid items
-    products = soup.select(".product-item, .product-item-info, .item.product")
+    products = soup.select(".product-item")
     if not products:
-        products = soup.select("[data-product-id]")
+        products = soup.select(".product-item-info, .item.product, [data-product-id]")
 
     for item in products:
         result = _parse_product_card(item)
@@ -115,7 +115,7 @@ def _parse_category_page(soup):
             results.append(result)
 
     if results:
-        return results
+        return list({item["url"]: item for item in results}.values())
 
     # Method 2: Find all links to product pages and extract nearby info
     seen = set()
@@ -155,7 +155,6 @@ def _parse_category_page(soup):
 
 def _parse_product_card(item):
     """Parse a single Shophive product card."""
-    # Title
     title_el = item.select_one(".product-item-link, .product-name a, .product-title, a[title]")
     title = ""
     if title_el:
@@ -163,35 +162,24 @@ def _parse_product_card(item):
     if not title:
         return None
 
-    # Price
-    price = None
-    price_el = item.select_one(".price, .product-price, .special-price .price, .regular-price .price")
-    if price_el:
-        nums = re.findall(r'[\d,]+', price_el.get_text(strip=True))
-        if nums:
-            try:
-                price = int(nums[0].replace(",", ""))
-            except ValueError:
-                pass
-
-    if not price or price == 0:
+    price_el = item.select_one(".special-price .price, .regular-price .price, .price, .product-price")
+    price = parse_price(price_el.get_text(strip=True)) if price_el else None
+    if not price:
         return None
 
-    # URL
-    url = ""
-    link = item.select_one("a[href*='.html']")
-    if link:
-        href = link.get("href", "")
-        url = href if href.startswith("http") else f"{BASE_URL}{href}"
+    link = title_el if title_el.name == "a" else item.select_one(".product-item-link, a[href]")
+    if not link or not link.get("href"):
+        return None
+    href = link["href"]
+    url = href if href.startswith("http") else f"{BASE_URL}/{href.lstrip('/')}"
 
-    # Image
     image = ""
     img = item.select_one("img")
     if img:
         image = img.get("data-src") or img.get("src", "")
 
     brand = _extract_brand(title)
-    result = {"title": title, "price": price, "url": url or BASE_URL, "image": image,
+    result = {"title": title, "price": price, "url": url, "image": image,
               "storage": parse_storage(title), "ram": parse_ram(title), "in_stock": True}
     if image:
         save_scraped_image(brand=brand, title=title, image_url=image,

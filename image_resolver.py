@@ -24,12 +24,20 @@ def normalize(text):
 
 
 def extract_color(title):
-    """Extract color from product title."""
-    t = title.lower()
+    """Extract a complete color phrase without matching inside model names."""
+    matches = []
     for color in COLOR_NAMES:
-        if color in t:
-            return color.title()
-    return None
+        match = re.search(rf'\b{re.escape(color)}\b', title, re.I)
+        if not match:
+            continue
+        value = color
+        prefix = title[:match.start()].lower()
+        for modifier in ("titanium", "cobalt", "awesome", "vintage", "navigator", "natural", "phantom"):
+            if re.search(rf'\b{modifier}\s*$', prefix):
+                value = f"{modifier} {color}"
+                break
+        matches.append(value.title())
+    return max(matches, key=len) if matches else None
 
 
 def extract_model_key(title, brand):
@@ -58,153 +66,90 @@ def save_scraped_image(brand, title, image_url, source, source_url=""):
     if not image_url or not brand or not title:
         return None
 
+    from scrapers.utils import parse_storage
+
     color = extract_color(title)
     model_key = extract_model_key(title, brand)
-    storage_match = re.search(r'(\d+)\s*(GB|TB)', title, re.I)
-    storage = f"{storage_match.group(1)}{storage_match.group(2).upper()}" if storage_match else None
+    storage = parse_storage(title)
+    if not model_key:
+        return None
 
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Check if this exact image URL already exists
-    existing = cursor.execute(
-        "SELECT id FROM product_images WHERE image_url = ?",
-        (image_url,)
-    ).fetchone()
-
-    if existing:
-        # Update last_seen_at
-        cursor.execute("""
-            UPDATE product_images
-            SET last_seen_at = datetime('now'), updated_at = datetime('now'), is_active = 1
-            WHERE id = ?
-        """, (existing["id"],))
+    try:
+        identity = (brand, model_key, color, storage, source)
+        existing = conn.execute("""
+            SELECT id FROM product_images
+            WHERE brand = ? AND model_key = ? AND color IS ?
+              AND storage_variant IS ? AND source = ?
+        """, identity).fetchone()
+        if existing:
+            image_id = existing["id"]
+            conn.execute("""
+                UPDATE product_images
+                SET image_url = ?, source_url = ?, last_seen_at = datetime('now'),
+                    updated_at = datetime('now'), expires_at = datetime('now', '+30 days'),
+                    is_active = 1
+                WHERE id = ?
+            """, (image_url, source_url, image_id))
+        else:
+            conn.execute("""
+                INSERT INTO product_images
+                (brand, model_key, color, storage_variant, image_url, source,
+                 source_url, is_verified, confidence_score, last_seen_at, expires_at, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 60, datetime('now'),
+                        datetime('now', '+30 days'), 1)
+                ON CONFLICT DO NOTHING
+            """, (brand, model_key, color, storage, image_url, source, source_url))
+            row = conn.execute("""
+                SELECT id FROM product_images
+                WHERE brand = ? AND model_key = ? AND color IS ?
+                  AND storage_variant IS ? AND source = ?
+            """, identity).fetchone()
+            image_id = row["id"] if row else None
         conn.commit()
+        return image_id
+    finally:
         conn.close()
-        return existing["id"]
-
-    # Insert new scraped image
-    cursor.execute("""
-        INSERT INTO product_images
-        (brand, model_key, color, storage_variant, image_url, source, source_url, is_verified, confidence_score, last_seen_at, expires_at, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 60, datetime('now'), datetime('now', '+30 days'), 1)
-    """, (brand, model_key, color, storage, image_url, source, source_url))
-
-    image_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return image_id
 
 
 def resolve_image(product_title, product_brand, preferred_storage=None):
-    """Find the best matching image for a product.
-
-    Resolution order (highest priority first):
-    1. Verified official images (is_verified=1) with matching brand+model+color
-    2. Verified official images with matching brand+model
-    3. Recent scraped images (source='retailer') with matching brand+model+color
-    4. Recent scraped images with matching brand+model
-    5. Any active image with matching brand+model
-    6. Fallback to None
-
-    Guardrails:
-    - Images older than expires_at are ignored
-    - Images with is_active=0 are ignored
-    - Confidence score must be > 40
-    """
+    """Find a current brand/model image without substituting another color."""
     if not product_title or not product_brand:
         return None
 
     color = extract_color(product_title)
     model_key = extract_model_key(product_title, product_brand)
-    brand_upper = product_brand.upper()
+    if not model_key:
+        return None
 
+    color_upper = color.upper() if color else None
+    storage_upper = preferred_storage.upper() if preferred_storage else None
     conn = get_db()
-    cursor = conn.cursor()
-
-    # Query 1: Verified official + brand + model + color match
-    if color:
-        row = cursor.execute("""
+    try:
+        row = conn.execute("""
             SELECT image_url, confidence_score, source, is_verified
             FROM product_images
-            WHERE brand = ? AND is_verified = 1 AND is_active = 1
+            WHERE UPPER(brand) = ? AND is_active = 1
               AND (expires_at IS NULL OR expires_at > datetime('now'))
               AND confidence_score > 40
               AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
-              AND (color IS NULL OR UPPER(color) = ?)
-            ORDER BY confidence_score DESC, updated_at DESC
+              AND (
+                  ? IS NULL OR color IS NULL OR color = '' OR UPPER(color) = ?
+              )
+              AND (
+                  ? IS NULL OR storage_variant IS NULL OR storage_variant = ''
+                  OR UPPER(storage_variant) = ?
+              )
+            ORDER BY is_verified DESC, confidence_score DESC,
+                     last_seen_at DESC, updated_at DESC
             LIMIT 1
-        """, (brand_upper, f"%{model_key}%", model_key, color.upper())).fetchone()
-        if row:
-            conn.close()
-            return dict(row)
-
-    # Query 2: Verified official + brand + model (no color filter)
-    row = cursor.execute("""
-        SELECT image_url, confidence_score, source, is_verified
-        FROM product_images
-        WHERE brand = ? AND is_verified = 1 AND is_active = 1
-          AND (expires_at IS NULL OR expires_at > datetime('now'))
-          AND confidence_score > 40
-          AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
-        ORDER BY confidence_score DESC, updated_at DESC
-        LIMIT 1
-    """, (brand_upper, f"%{model_key}%", model_key)).fetchone()
-    if row:
+        """, (
+            product_brand.upper(), f"%{model_key}%", model_key,
+            color_upper, color_upper, storage_upper, storage_upper,
+        )).fetchone()
+        return dict(row) if row else None
+    finally:
         conn.close()
-        return dict(row)
-
-    # Query 3: Recent scraped + brand + model + color
-    if color:
-        row = cursor.execute("""
-            SELECT image_url, confidence_score, source, is_verified
-            FROM product_images
-            WHERE brand = ? AND is_active = 1
-              AND (expires_at IS NULL OR expires_at > datetime('now'))
-              AND confidence_score > 40
-              AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
-              AND (color IS NULL OR UPPER(color) = ?)
-              AND source IN ('telex', 'mega', 'retailer')
-            ORDER BY last_seen_at DESC, confidence_score DESC
-            LIMIT 1
-        """, (brand_upper, f"%{model_key}%", model_key, color.upper())).fetchone()
-        if row:
-            conn.close()
-            return dict(row)
-
-    # Query 4: Recent scraped + brand + model
-    row = cursor.execute("""
-        SELECT image_url, confidence_score, source, is_verified
-        FROM product_images
-        WHERE brand = ? AND is_active = 1
-          AND (expires_at IS NULL OR expires_at > datetime('now'))
-          AND confidence_score > 40
-          AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
-          AND source IN ('telex', 'mega', 'retailer')
-        ORDER BY last_seen_at DESC, confidence_score DESC
-        LIMIT 1
-    """, (brand_upper, f"%{model_key}%", model_key)).fetchone()
-    if row:
-        conn.close()
-        return dict(row)
-
-    # Query 5: Any active match
-    row = cursor.execute("""
-        SELECT image_url, confidence_score, source, is_verified
-        FROM product_images
-        WHERE brand = ? AND is_active = 1
-          AND (expires_at IS NULL OR expires_at > datetime('now'))
-          AND confidence_score > 40
-          AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
-        ORDER BY confidence_score DESC, updated_at DESC
-        LIMIT 1
-    """, (brand_upper, f"%{model_key}%", model_key)).fetchone()
-    if row:
-        conn.close()
-        return dict(row)
-
-    conn.close()
-    return None
 
 
 def get_image_stats():

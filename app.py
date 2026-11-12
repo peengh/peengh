@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify, redirect, url_for, g
 
 from database import get_db, init_db, seed_retailers, slugify
-from scrapers.utils import human_time_ago
+from scrapers.utils import human_time_ago, parse_timestamp
 from image_resolver import resolve_image, save_scraped_image
 import config
 
@@ -38,7 +38,7 @@ def enrich_products_with_images(products):
     Falls back to the product's stored image_url if no match found.
     """
     for p in products:
-        resolved = resolve_image(p["title"], p["brand"])
+        resolved = resolve_image(p["title"], p["brand"], p.get("storage"))
         if resolved and resolved.get("image_url"):
             p["image_url"] = resolved["image_url"]
             p["image_source"] = resolved.get("source", "")
@@ -95,6 +95,15 @@ def home():
         ORDER BY count DESC
         LIMIT 8
     """).fetchall()
+    stats = conn.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM products) AS products,
+            (SELECT COUNT(DISTINCT retailer_id) FROM offers) AS retailers,
+            (SELECT COUNT(*) FROM (
+                SELECT product_id FROM offers
+                GROUP BY product_id HAVING COUNT(*) >= 2
+            )) AS comparisons
+    """).fetchone()
 
     conn.close()
     g.pop("_database", None)
@@ -104,6 +113,7 @@ def home():
         trending=[dict(r) for r in trending],
         price_drops=[dict(r) for r in price_drops],
         brands=[dict(r) for r in brands],
+        stats=stats,
     )
 
 
@@ -117,11 +127,15 @@ def category():
 
     # Query params
     brand_filter = request.args.get("brand", "")
-    min_price = request.args.get("min_price", "")
-    max_price = request.args.get("max_price", "")
     storage_filter = request.args.get("storage", "")
     ram_filter = request.args.get("ram", "")
     sort = request.args.get("sort", "popular")  # popular, price_low, price_high, newest
+    try:
+        min_price = int(request.args["min_price"]) if request.args.get("min_price") else None
+        max_price = int(request.args["max_price"]) if request.args.get("max_price") else None
+    except ValueError:
+        min_price = None
+        max_price = None
 
     # Build query
     where_clauses = ["1=1"]
@@ -130,12 +144,12 @@ def category():
     if brand_filter:
         where_clauses.append("brand = ?")
         params.append(brand_filter)
-    if min_price:
+    if min_price is not None:
         where_clauses.append("lowest_price >= ?")
-        params.append(int(min_price))
-    if max_price:
+        params.append(min_price)
+    if max_price is not None:
         where_clauses.append("lowest_price <= ?")
-        params.append(int(max_price))
+        params.append(max_price)
     if storage_filter:
         where_clauses.append("storage = ?")
         params.append(storage_filter)
@@ -231,7 +245,7 @@ def product(slug):
     # Check if any price is stale (> 1 hour)
     stale_threshold = datetime.now(timezone.utc) - timedelta(hours=1)
     has_stale = any(
-        datetime.fromisoformat(str(o["last_checked"]).replace("Z", "+00:00")) < stale_threshold
+        parse_timestamp(o["last_checked"]) < stale_threshold
         for o in offers if o["last_checked"]
     )
 
@@ -257,7 +271,7 @@ def product(slug):
     """, (product["id"],)).fetchall()
 
     # Resolve best image for this product
-    resolved = resolve_image(product["title"], product["brand"])
+    resolved = resolve_image(product["title"], product["brand"], product.get("storage"))
     if resolved and resolved.get("image_url"):
         product["image_url"] = resolved["image_url"]
 
@@ -481,75 +495,64 @@ def refresh_price(product_id):
         WHERE o.product_id = ?
     """, (product_id,)).fetchall()
 
-    # Check rate limit
+    refresh_window = f"-{config.MIN_REFRESH_INTERVAL} minutes"
     recent_job = conn.execute("""
         SELECT * FROM jobs
         WHERE product_id = ? AND status = 'completed'
-          AND completed_at > datetime('now', '-45 minutes')
+          AND completed_at > datetime('now', ?)
         LIMIT 1
-    """, (product_id,)).fetchone()
+    """, (product_id, refresh_window)).fetchone()
 
-    refreshed = []
     if not recent_job:
-        # Run refresh for each offer
+        image_result = None
         for offer in offers:
             slug = offer["retailer_slug"]
             url = offer["url"]
             try:
                 result = _check_price(slug, url)
-                if result.get("error"):
+                if result.get("error") or not result.get("price"):
                     continue
-                # Update offer
                 conn.execute("""
                     UPDATE offers
                     SET price = ?, in_stock = ?, last_checked = CURRENT_TIMESTAMP,
                         title = COALESCE(?, title)
                     WHERE id = ?
-                """, (result["price"], result["in_stock"], result.get("title"), offer["id"]))
-                # Insert price history
+                """, (result["price"], result.get("in_stock", True),
+                      result.get("title"), offer["id"]))
                 conn.execute("""
-                    INSERT OR REPLACE INTO price_history (product_id, retailer_id, price, date)
-                    VALUES (?, ?, ?, date('now'))
-                """, (product_id, offer["retailer_id"], result["price"]))
-                refreshed.append({"retailer": slug, "price": result["price"]})
+                    INSERT INTO price_history
+                        (product_id, retailer_id, offer_id, price, date)
+                    VALUES (?, ?, ?, ?, date('now'))
+                    ON CONFLICT(product_id, retailer_id, date) DO UPDATE SET
+                        offer_id = excluded.offer_id,
+                        price = excluded.price
+                """, (product_id, offer["retailer_id"], offer["id"], result["price"]))
+                if image_result is None and result.get("image_url"):
+                    image_result = (offer, result)
             except Exception as e:
                 print(f"Refresh failed for {slug}: {e}")
 
-        # Update product image if any scraper returned one
-        product = conn.execute("SELECT title, brand FROM products WHERE id = ?", (product_id,)).fetchone()
-        for offer in offers:
-            slug = offer["retailer_slug"]
-            url = offer["url"]
-            try:
-                result = _check_price(slug, url)
-                if result.get("image_url") and product:
-                    # Save to curated image database
-                    save_scraped_image(
-                        brand=product["brand"],
-                        title=product["title"],
-                        image_url=result["image_url"],
-                        source=slug,
-                        source_url=url
-                    )
-                    # Also update product row as fallback
-                    conn.execute("""
-                        UPDATE products
-                        SET image_url = ?
-                        WHERE id = ? AND (image_url IS NULL OR image_url = '')
-                    """, (result["image_url"], product_id))
-                    break
-            except Exception:
-                pass
-
-        # Mark job complete
         conn.execute("""
             INSERT INTO jobs (product_id, status, completed_at)
             VALUES (?, 'completed', CURRENT_TIMESTAMP)
         """, (product_id,))
         conn.commit()
-
-        # Recalculate product price bounds
         _update_product_prices(conn, product_id)
+
+        if image_result:
+            offer, result = image_result
+            save_scraped_image(
+                brand=product["brand"],
+                title=result.get("title") or product["title"],
+                image_url=result["image_url"],
+                source=offer["retailer_slug"],
+                source_url=offer["url"],
+            )
+            conn.execute("""
+                UPDATE products SET image_url = ?
+                WHERE id = ? AND (image_url IS NULL OR image_url = '')
+            """, (result["image_url"], product_id))
+            conn.commit()
 
     # Re-fetch updated offers
     offers = conn.execute("""
@@ -583,8 +586,17 @@ def _update_product_prices(conn, product_id):
 
 
 # ---------------------------------------------------------------------------
-# Static pages
+# Health and static pages
 # ---------------------------------------------------------------------------
+
+@app.route("/health")
+def health():
+    try:
+        get_db_conn().execute("SELECT 1").fetchone()
+        return jsonify(status="ok")
+    except Exception:
+        return jsonify(status="unavailable"), 503
+
 
 @app.route("/about")
 def about():

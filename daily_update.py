@@ -1,35 +1,21 @@
 #!/usr/bin/env python3
-"""
-daily_update.py — Scrape all stores, rebuild products/offers/price_history.
-
-Strategy:
-  1. Scrape each store's mobile category
-  2. Filter out obvious non-phones (laptops, TVs, etc.) — LIGHT filtering
-  3. Group by brand + model (including storage for precision)
-  4. Merge with curated baseline phones
-  5. Insert into database with offers from all stores
-
-Run manually:   python3 daily_update.py
-"""
+"""Scrape retailer catalogues and atomically apply a daily price update."""
+import fcntl
+import hashlib
 import os
-import sys
 import re
+import sys
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from database import get_db, init_db, seed_retailers, seed_official_images, slugify
+from database import DATABASE, get_db, init_db, seed_retailers, seed_official_images, slugify
+from scrapers.utils import parse_ram, parse_storage
 from scrapers.telex import scrape_category as scrape_telex
 from scrapers.mega import scrape_category as scrape_mega
 from scrapers.priceoye import crawl_mobiles as scrape_priceoye
 from scrapers.shophive import scrape_category as scrape_shophive
 from scrapers.homeshopping import scrape_category as scrape_homeshopping
-
-# ---------------------------------------------------------------------------
-# Light filter — only reject OBVIOUS non-phones
-# We scrape from mobile categories, so 95%+ should already be phones.
-# This just catches laptops, TVs, appliances, consoles that slipped in.
-# ---------------------------------------------------------------------------
 
 STRICT_NON_PHONE = [
     "laptop", "macbook", "notebook", "chromebook",
@@ -40,360 +26,323 @@ STRICT_NON_PHONE = [
     "vacuum cleaner", "iron ", "water dispenser", "geyser",
     "playstation", "xbox", "nintendo", "gaming console",
     "dslr", "camera ", "camcorder", "projector",
-    "tablet ", "ipad ", "tab ",
-    "smart watch", "smartwatch", "fitness band", "earbuds",
+    "tablet ", "ipad ", "tab ", "smart watch", "smartwatch",
+    "fitness band", "earbuds",
 ]
-
-
-def is_phone_product(title):
-    """Return False only for obvious non-phones. Default to True (keep)."""
-    t = title.lower()
-    for bad in STRICT_NON_PHONE:
-        if bad in t:
-            return False
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Brand + Model extraction — precise matching
-# ---------------------------------------------------------------------------
 
 BRAND_KEYWORDS = [
     ("apple", "Apple"), ("iphone", "Apple"),
     ("samsung", "Samsung"), ("galaxy", "Samsung"),
     ("xiaomi", "Xiaomi"), ("redmi", "Xiaomi"), ("poco", "Xiaomi"),
-    ("infinix", "Infinix"),
-    ("tecno", "Tecno"),
-    ("realme", "Realme"),
-    ("oppo", "Oppo"),
-    ("vivo", "Vivo"),
-    ("nokia", "Nokia"),
+    ("infinix", "Infinix"), ("tecno", "Tecno"),
+    ("realme", "Realme"), ("real me", "Realme"),
+    ("oppo", "Oppo"), ("vivo", "Vivo"), ("nokia", "Nokia"),
     ("pixel", "Google"), ("google", "Google"),
-    ("oneplus", "OnePlus"),
-    ("huawei", "Huawei"),
-    ("honor", "Honor"),
-    ("motorola", "Motorola"), ("moto", "Motorola"),
-    ("sony", "Sony"), ("xperia", "Sony"),
-    ("lg", "LG"),
-    ("htc", "HTC"),
-    ("asus", "Asus"),
-    ("lenovo", "Lenovo"),
+    ("oneplus", "OnePlus"), ("huawei", "Huawei"),
+    ("honor", "Honor"), ("motorola", "Motorola"), ("moto", "Motorola"),
+    ("sony", "Sony"), ("xperia", "Sony"), ("lg", "LG"),
+    ("htc", "HTC"), ("asus", "Asus"), ("lenovo", "Lenovo"),
+    ("nothing", "Nothing"),
 ]
+
+COLORS = [
+    "black", "white", "blue", "red", "green", "gold", "silver",
+    "grey", "gray", "purple", "pink", "yellow", "orange", "brown",
+    "beige", "cream", "midnight", "sierra", "alpine", "graphite",
+    "titanium", "phantom", "lavender", "mint", "coral", "aqua",
+    "obsidian", "porcelain", "rose", "navy", "violet", "natural",
+]
+
+RETAILER_SCRAPERS = {
+    "telex": ("TeleX", lambda: scrape_telex("smart-phones", limit=250)),
+    "mega": ("Mega.pk", lambda: scrape_mega()),
+    "priceoye": ("PriceOye", scrape_priceoye),
+    "shophive": ("Shophive", lambda: scrape_shophive("mobile-phones", limit=150)),
+    "homeshopping": ("HomeShopping", lambda: scrape_homeshopping("mobile-phones", limit=150)),
+}
+
+
+def is_phone_product(title):
+    lowered = title.lower()
+    return not any(term in lowered for term in STRICT_NON_PHONE)
 
 
 def extract_brand(title):
-    lower = title.lower()
-    for kw, brand in BRAND_KEYWORDS:
-        if kw in lower:
+    lowered = title.lower()
+    for keyword, brand in BRAND_KEYWORDS:
+        if re.search(rf'\b{re.escape(keyword)}\b', lowered):
             return brand
     parts = title.split()
     return parts[0] if parts else "Other"
 
 
-def extract_model_key(title, brand):
-    """Create a matching key from brand + model + storage.
-    Storage IS included so 128GB and 256GB variants stay separate.
-    """
-    t = title
+def extract_model_key(title, brand, storage=None):
+    text = re.sub(rf'\b{re.escape(brand)}\b', ' ', title, flags=re.I)
+    text = re.sub(r'\d+\s*(GB|TB)\s*RAM', ' ', text, flags=re.I)
+    text = re.sub(r'\d+\s*(GB|TB)', ' ', text, flags=re.I)
+    text = re.sub(r'\([^)]*\)', ' ', text)
+    for term in [
+        "OFFICIAL WARRANTY", "OFFICIAL", "NON PTA", "NON-PTA", "PTA",
+        "APPROVED", "DUAL SIM", "SINGLE SIM", "DUAL-SIM", "SINGLE-SIM",
+        "BRAND NEW", "BOX PACKED", "BOXPACKED", "FACTORY UNLOCKED",
+        "UNLOCKED", "USED", "SEALED", "INTERNATIONAL", "LOCAL",
+        "WARRANTY", "PAKISTAN", "STORAGE", "RAM", "WITH", "5G", "4G", "LTE",
+        "PHYSICAL", "ESIM", "E SIM", "NEW",
+    ]:
+        text = re.sub(rf'\b{re.escape(term)}\b', ' ', text, flags=re.I)
+    for color in COLORS:
+        text = re.sub(rf'\b{color}\b', ' ', text, flags=re.I)
+    text = re.sub(r'[^\w\s]', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    capacity = storage or parse_storage(title)
+    key = f"{brand} {text}"
+    if capacity:
+        key = f"{key} {capacity}"
+    return re.sub(r'\s+', ' ', key).strip().upper()
 
-    # Remove brand
-    t = re.sub(r'\b' + re.escape(brand) + r'\b', '', t, flags=re.I)
-
-    # Remove RAM
-    t = re.sub(r'\d+\s*(GB|TB)\s*RAM', '', t, flags=re.I)
-
-    # Remove network
-    t = re.sub(r'\b(5G|4G|LTE)\b', '', t, flags=re.I)
-
-    # Remove suffixes (PTA, warranty, etc.)
-    for suffix in ["OFFICIAL", "PTA", "APPROVED", "DUAL SIM", "SINGLE SIM",
-                   "DUAL-SIM", "SINGLE-SIM", "NON PTA", "NON-PTA",
-                   "BRAND NEW", "BOX PACKED", "BOXPACKED",
-                   "FACTORY UNLOCKED", "UNLOCKED", "USED", "SEALED",
-                   "INTERNATIONAL", "LOCAL", "WARRANTY", "OFFICIAL WARRANTY",
-                   "WITH", "WARRANTY", "OFFICIAL", "PK", "PAKISTAN"]:
-        t = re.sub(r'\b' + re.escape(suffix) + r'\b', '', t, flags=re.I)
-
-    # Remove colors
-    colors = ["black", "white", "blue", "red", "green", "gold", "silver",
-              "grey", "gray", "purple", "pink", "yellow", "orange", "brown",
-              "beige", "cream", "midnight", "sierra", "alpine", "graphite",
-              "titanium", "phantom", "lavender", "mint", "coral", "aqua",
-              "obsidian", "porcelain", "rose", "blue", "black"]
-    for color in colors:
-        t = re.sub(r'\b' + color + r'\b', '', t, flags=re.I)
-
-    # Remove parentheses
-    t = re.sub(r'\([^)]*\)', '', t)
-
-    # Clean up
-    t = re.sub(r'\s+', ' ', t).strip()
-
-    # Include storage in match key
-    storage = parse_storage(title) or ""
-    if storage:
-        key = f"{brand} {t} {storage}".upper()
-    else:
-        key = f"{brand} {t}".upper()
-
-    key = re.sub(r'\s+', ' ', key).strip()
-    return key
-
-
-def parse_storage(title):
-    match = re.search(r'(\d+)\s*(GB|TB)', title, re.I)
-    if match:
-        return f"{match.group(1)}{match.group(2).upper()}"
-    return None
-
-
-def parse_ram(title):
-    matches = re.findall(r'(\d+)\s*(GB|TB)\s*(RAM)', title, re.I)
-    for m in matches:
-        return f"{m[0]}{m[1].upper()}"
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Curated phone integration
-# ---------------------------------------------------------------------------
 
 def load_curated_phones():
-    """Return curated phones as offer dicts with store='curated'."""
+    from seed_curated import CURATED_PHONES
+    return [{
+        "title": title,
+        "price": 0,
+        "url": "",
+        "store": "curated",
+        "image": "",
+        "storage": storage,
+        "ram": ram,
+        "in_stock": True,
+        "popularity": score,
+    } for title, brand, storage, ram, score in CURATED_PHONES]
+
+
+def validate_offers(items, store):
+    valid = []
+    rejected = 0
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        url = str(item.get("url") or "").strip()
+        try:
+            price = int(item.get("price") or 0)
+        except (TypeError, ValueError):
+            price = 0
+        if (
+            len(title) < 3 or not is_phone_product(title)
+            or not url.startswith(("https://", "http://"))
+            or not 500 <= price <= 5_000_000
+        ):
+            rejected += 1
+            continue
+        valid.append({
+            "title": title,
+            "price": price,
+            "url": url,
+            "store": store,
+            "image": item.get("image") or "",
+            "storage": item.get("storage") or parse_storage(title),
+            "ram": item.get("ram") or parse_ram(title),
+            "in_stock": bool(item.get("in_stock", True)),
+            "popularity": 0,
+        })
+    print(f"  [{store}] Kept {len(valid)}, rejected {rejected}")
+    return valid
+
+
+def scrape_all_stores():
+    offers = []
+    successful_stores = set()
+    for store, (name, scraper) in RETAILER_SCRAPERS.items():
+        print(f"Scraping {name}...")
+        try:
+            items = scraper()
+            store_offers = validate_offers(items, store)
+        except Exception as exc:
+            print(f"  [{store}] Scrape failed: {exc}")
+            continue
+        if store_offers:
+            successful_stores.add(store)
+            offers.extend(store_offers)
+        else:
+            print(f"  [{store}] No valid products; existing offers will be preserved")
+    if not successful_stores:
+        raise RuntimeError("All retailer scrapes failed; database was not changed")
+    return offers, successful_stores
+
+
+def group_offers(offers):
+    groups = {}
+    for offer in offers:
+        brand = extract_brand(offer["title"])
+        key = extract_model_key(offer["title"], brand, offer.get("storage"))
+        if not key or key == brand.upper() or len(key) < len(brand) + 3:
+            continue
+        groups.setdefault(key, []).append(offer)
+    return groups
+
+
+def _product_id(cursor, key, title, brand, image, storage, ram, popularity, now):
+    existing = cursor.execute(
+        "SELECT id, slug, view_count FROM products WHERE match_key = ? ORDER BY id LIMIT 1",
+        (key,),
+    ).fetchone()
+    if existing:
+        product_id = existing["id"]
+        cursor.execute("""
+            UPDATE products
+            SET title = ?, brand = ?, image_url = CASE
+                    WHEN image_url IS NULL OR image_url = '' THEN ? ELSE image_url END,
+                storage = ?, ram = ?, view_count = MAX(view_count, ?), updated_at = ?
+            WHERE id = ?
+        """, (title, brand, image, storage, ram, popularity, now, product_id))
+        return product_id
+
+    slug = slugify(title) or slugify(key)
+    if cursor.execute("SELECT 1 FROM products WHERE slug = ?", (slug,)).fetchone():
+        suffix = hashlib.sha1(key.encode()).hexdigest()[:8]
+        slug = f"{slug[:111]}-{suffix}"
+    cursor.execute("""
+        INSERT INTO products
+            (title, brand, slug, image_url, match_key, storage, ram,
+             lowest_price, highest_price, view_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+    """, (title, brand, slug, image, key, storage, ram, popularity, now, now))
+    return cursor.lastrowid
+
+
+def _upsert_offer(cursor, product_id, retailer_id, offer, now):
+    existing = cursor.execute("""
+        SELECT id FROM offers
+        WHERE product_id = ? AND retailer_id = ?
+        ORDER BY id LIMIT 1
+    """, (product_id, retailer_id)).fetchone()
+    values = (
+        offer["title"], offer["price"], offer["url"],
+        offer.get("in_stock", True), now, now,
+    )
+    if existing:
+        offer_id = existing["id"]
+        cursor.execute("""
+            UPDATE offers
+            SET title = ?, price = ?, url = ?, in_stock = ?,
+                scraped_at = ?, last_checked = ?
+            WHERE id = ?
+        """, values + (offer_id,))
+    else:
+        cursor.execute("""
+            INSERT INTO offers
+                (product_id, retailer_id, title, price, url, in_stock,
+                 scraped_at, last_checked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (product_id, retailer_id) + values)
+        offer_id = cursor.lastrowid
+
+    cursor.execute("""
+        INSERT INTO price_history (product_id, retailer_id, offer_id, price, date)
+        VALUES (?, ?, ?, ?, date('now'))
+        ON CONFLICT(product_id, retailer_id, date) DO UPDATE SET
+            offer_id = excluded.offer_id,
+            price = excluded.price
+    """, (product_id, retailer_id, offer_id, offer["price"]))
+
+
+def _update_prices(cursor, product_id):
+    cursor.execute("""
+        UPDATE products
+        SET lowest_price = COALESCE((
+                SELECT MIN(price) FROM offers
+                WHERE product_id = ? AND in_stock = 1 AND price > 0
+            ), 0),
+            highest_price = COALESCE((
+                SELECT MAX(price) FROM offers
+                WHERE product_id = ? AND in_stock = 1 AND price > 0
+            ), 0)
+        WHERE id = ?
+    """, (product_id, product_id, product_id))
+
+
+def apply_updates(groups, retailers):
+    now = datetime.now(timezone.utc).isoformat()
+    db = get_db()
+    cursor = db.cursor()
     try:
-        from seed_curated import CURATED_PHONES
-        offers = []
-        for title, brand, storage, ram, score in CURATED_PHONES:
-            offers.append({
-                "title": title,
-                "price": 0,
-                "url": "",
-                "store": "curated",
-                "image": "",
-                "storage": storage,
-                "ram": ram,
-                "in_stock": True,
-                "popularity": score,
-            })
-        return offers
-    except Exception as e:
-        print(f"  [Curated] Could not load: {e}")
-        return []
+        db.execute("BEGIN IMMEDIATE")
+        for key, offers in groups.items():
+            best_offer = min(offers, key=lambda item: len(item["title"]))
+            title = best_offer["title"]
+            brand = extract_brand(title)
+            image = next((item["image"] for item in offers if item.get("image")), "")
+            storage = next((item.get("storage") for item in offers if item.get("storage")), "")
+            ram = next((item.get("ram") for item in offers if item.get("ram")), "")
+            popularity = max(item.get("popularity", 0) for item in offers)
+            product_id = _product_id(
+                cursor, key, title, brand, image, storage, ram, popularity, now,
+            )
 
+            seen_stores = set()
+            for offer in offers:
+                store = offer["store"]
+                if store == "curated" or store in seen_stores:
+                    continue
+                seen_stores.add(store)
+                retailer_id = retailers.get(store)
+                if retailer_id:
+                    _upsert_offer(cursor, product_id, retailer_id, offer, now)
+            _update_prices(cursor, product_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
-# ---------------------------------------------------------------------------
-# Rebuild database
-# ---------------------------------------------------------------------------
+    product_count = db.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+    offer_count = db.execute("SELECT COUNT(*) FROM offers").fetchone()[0]
+    store_distribution = db.execute("""
+        SELECT r.name, COUNT(*) AS count
+        FROM offers o JOIN retailers r ON o.retailer_id = r.id
+        GROUP BY r.name ORDER BY r.name
+    """).fetchall()
+    db.close()
+    return product_count, offer_count, store_distribution
+
 
 def rebuild_database():
     init_db()
     seed_retailers()
     seed_official_images()
+    scraped_offers, successful_stores = scrape_all_stores()
+    curated_offers = load_curated_phones()
+    groups = group_offers(scraped_offers + curated_offers)
+    if not groups:
+        raise RuntimeError("No valid product groups; database was not changed")
 
     db = get_db()
-    cursor = db.cursor()
-
-    # Map retailer slugs to IDs
-    retailers = {}
-    for row in cursor.execute("SELECT id, slug FROM retailers").fetchall():
-        retailers[row["slug"]] = row["id"]
-
-    # --- Scrape all stores ---
-    print("Scraping TeleX...")
-    telex_items = scrape_telex("smart-phones", limit=250)
-    print(f"  Got {len(telex_items)} from TeleX")
-
-    print("Scraping Mega.pk...")
-    mega_items = scrape_mega()
-    print(f"  Got {len(mega_items)} from Mega.pk")
-
-    print("Scraping PriceOye...")
-    priceoye_items = scrape_priceoye()
-    print(f"  Got {len(priceoye_items)} from PriceOye")
-
-    print("Scraping Shophive...")
-    shophive_items = scrape_shophive("mobile-phones", limit=150)
-    print(f"  Got {len(shophive_items)} from Shophive")
-
-    print("Scraping HomeShopping...")
-    homeshopping_items = scrape_homeshopping("mobile-phones", limit=150)
-    print(f"  Got {len(homeshopping_items)} from HomeShopping")
-
-    # --- Collect all offers ---
-    all_offers = []
-
-    def _add_offers(items, store_name):
-        kept = 0
-        rejected = 0
-        rejected_samples = []
-        for item in items:
-            title = item.get("title", "")
-            if not title or len(title) < 3:
-                rejected += 1
-                continue
-            if not is_phone_product(title):
-                rejected += 1
-                if len(rejected_samples) < 3:
-                    rejected_samples.append(title[:60])
-                continue
-            all_offers.append({
-                "title": title,
-                "price": item["price"],
-                "url": item["url"],
-                "store": store_name,
-                "image": item.get("image"),
-                "storage": item.get("storage"),
-                "ram": item.get("ram"),
-                "in_stock": item.get("in_stock", True),
-                "popularity": 0,
-            })
-            kept += 1
-        print(f"  [{store_name}] Kept {kept}, Rejected {rejected}")
-        if rejected_samples:
-            print(f"    Rejected: {rejected_samples}")
-        return kept
-
-    _add_offers(telex_items, "telex")
-    _add_offers(mega_items, "mega")
-    _add_offers(priceoye_items, "priceoye")
-    _add_offers(shophive_items, "shophive")
-    _add_offers(homeshopping_items, "homeshopping")
-
-    # --- Add curated baseline ---
-    curated_offers = load_curated_phones()
-    all_offers.extend(curated_offers)
-    print(f"  [curated] Added {len(curated_offers)} baseline phones")
-
-    print(f"\nTotal offers (scraped + curated): {len(all_offers)}")
-
-    # --- Group by match key ---
-    groups = {}
-    for offer in all_offers:
-        brand = extract_brand(offer["title"])
-        key = extract_model_key(offer["title"], brand)
-
-        if not key or key == brand.upper() or len(key) < len(brand) + 3:
-            continue
-
-        groups.setdefault(key, []).append(offer)
-
-    print(f"Grouped into {len(groups)} products")
-
-    # --- Clear old data ---
-    cursor.execute("DELETE FROM price_history")
-    cursor.execute("DELETE FROM offers")
-    cursor.execute("DELETE FROM products")
-    db.commit()
-
-    # --- Insert products and offers ---
-    now = datetime.now(timezone.utc).isoformat()
-
-    for key, offers in groups.items():
-        # Use the best title (shortest, most representative)
-        best_offer = min(offers, key=lambda x: len(x["title"]))
-        title = best_offer["title"]
-        brand = extract_brand(title)
-        slug = slugify(title)
-        image = best_offer.get("image") or ""
-
-        # Get storage/RAM from any offer that has it
-        storage = best_offer.get("storage") or ""
-        for o in offers:
-            if o.get("storage"):
-                storage = o["storage"]
-                break
-
-        ram = best_offer.get("ram") or ""
-        for o in offers:
-            if o.get("ram"):
-                ram = o["ram"]
-                break
-
-        # Price stats (ignore 0 prices from curated)
-        real_prices = [o["price"] for o in offers if o["price"] > 0]
-        lowest = min(real_prices) if real_prices else 0
-        highest = max(real_prices) if real_prices else 0
-
-        # Popularity = max of all offers
-        popularity = max(o.get("popularity", 0) for o in offers)
-
-        cursor.execute(
-            """INSERT INTO products
-               (title, brand, slug, image_url, match_key, storage, ram,
-                lowest_price, highest_price, view_count, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (title, brand, slug, image, key, storage, ram,
-             lowest, highest, popularity, now, now),
-        )
-        product_id = cursor.lastrowid
-
-        # Insert offers
-        seen_stores = set()
-        for offer in offers:
-            store_slug = offer["store"]
-
-            # Skip curated baseline with no price (just for product existence)
-            if store_slug == "curated" and offer["price"] == 0:
-                continue
-
-            # Only one offer per store per product
-            if store_slug in seen_stores:
-                continue
-            seen_stores.add(store_slug)
-
-            retailer_id = retailers.get(store_slug)
-            if not retailer_id:
-                if store_slug != "curated":
-                    print(f"  WARNING: Unknown retailer '{store_slug}'")
-                continue
-
-            cursor.execute(
-                """INSERT OR REPLACE INTO offers
-                   (product_id, retailer_id, title, price, url, in_stock, last_checked)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (product_id, retailer_id, offer["title"], offer["price"],
-                 offer["url"], offer.get("in_stock", True), now),
-            )
-            offer_id = cursor.lastrowid
-
-            if offer["price"] > 0:
-                cursor.execute(
-                    """INSERT OR REPLACE INTO price_history
-                       (product_id, retailer_id, offer_id, price, date)
-                       VALUES (?, ?, ?, ?, date('now'))""",
-                    (product_id, retailer_id, offer_id, offer["price"]),
-                )
-
-    db.commit()
-
-    # --- Verification ---
-    product_count = cursor.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-    offer_count = cursor.execute("SELECT COUNT(*) FROM offers").fetchone()[0]
-
-    # Show store distribution
-    store_dist = cursor.execute("""
-        SELECT r.name, COUNT(*) as cnt
-        FROM offers o JOIN retailers r ON o.retailer_id = r.id
-        GROUP BY r.name
-    """).fetchall()
-
+    retailers = {
+        row["slug"]: row["id"]
+        for row in db.execute("SELECT id, slug FROM retailers").fetchall()
+    }
     db.close()
+    counts = apply_updates(groups, retailers)
 
-    print(f"\n{'='*50}")
-    print(f"DATABASE REBUILD COMPLETE")
-    print(f"{'='*50}")
-    print(f"Total products:  {product_count}")
-    print(f"Total offers:    {offer_count}")
-    print(f"Store breakdown:")
-    for row in store_dist:
-        print(f"  {row['name']}: {row['cnt']} offers")
-    print(f"{'='*50}")
+    print("\n" + "=" * 50)
+    print("DATABASE UPDATE COMPLETE")
+    print("=" * 50)
+    print(f"Retailers updated: {', '.join(sorted(successful_stores))}")
+    print(f"Product groups processed: {len(groups)}")
+    print(f"Total products: {counts[0]}")
+    print(f"Total offers: {counts[1]}")
+    for row in counts[2]:
+        print(f"  {row['name']}: {row['count']} offers")
+    print("=" * 50)
 
-    if product_count == 0:
-        print("WARNING: No products found!")
-        from seed_demo import seed_demo_data
-        seed_demo_data()
+
+def main():
+    lock_path = f"{DATABASE}.lock"
+    with open(lock_path, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit("Another daily update is already running")
+        rebuild_database()
 
 
 if __name__ == "__main__":
-    rebuild_database()
+    main()

@@ -12,13 +12,9 @@ from database import init_db, seed_retailers, seed_official_images
 
 DB_PATH = os.environ.get("DATABASE_PATH", "peengh.db")
 
-# Ensure DB schema exists
-if not os.path.exists(DB_PATH):
-    init_db()
-    seed_retailers()
-    seed_official_images()
-
-# Seed official images on every boot (idempotent)
+# Apply schema migrations and seed reference data on every boot.
+init_db()
+seed_retailers()
 seed_official_images()
 
 # Check product count — warn if empty (do NOT auto-seed demo data)
