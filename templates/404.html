@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Page Not Found — Peengh{% endblock %}
+
+{% block content %}
+<div class="max-w-[1200px] mx-auto px-4 py-16 text-center">
+  <div class="w-20 h-20 bg-peengh-cream rounded-full flex items-center justify-center mx-auto mb-5">
+    <svg class="w-10 h-10 text-peengh-navy" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+    </svg>
+  </div>
+  <h1 class="text-2xl font-bold text-peengh-navy mb-2">Page Not Found</h1>
+  <p class="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+    The page you're looking for doesn't exist or has been moved.
+  </p>
+  <div class="flex gap-3 justify-center">
+    <a href="/" class="bg-peengh-navy text-white px-5 py-2.5 rounded-xl text-sm font-semibold tap-target hover:bg-peengh-amber transition">
+      Go Home
+    </a>
+    <a href="/mobiles" class="bg-white border border-gray-200 text-gray-700 px-5 py-2.5 rounded-xl text-sm font-semibold tap-target hover:border-peengh-amber transition">
+      Browse Mobiles
+    </a>
+  </div>
+</div>
+{% endblock %}

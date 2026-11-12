@@ -1,0 +1,39 @@
+name: Daily Price Scrape (Playwright)
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 7 AM UTC = 12 PM Pakistan time
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper with Playwright
+        run: python3 daily_update.py
+        env:
+          USE_PLAYWRIGHT: "1"
+
+      - name: Commit database
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add peengh.db
+          git diff --cached --quiet || git commit -m "Daily price update $(date +%Y-%m-%d)"
+          git push

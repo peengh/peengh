@@ -1,0 +1,81 @@
+<form method="get" class="space-y-5">
+  <!-- Preserve non-filter params -->
+  {% if filters.sort %}<input type="hidden" name="sort" value="{{ filters.sort }}">{% endif %}
+
+  <!-- Brand -->
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Brand</label>
+    <div class="space-y-1.5 max-h-48 overflow-y-auto">
+      {% for b in brands %}
+      <label class="flex items-center gap-2 cursor-pointer tap-target">
+        <input type="radio" name="brand" value="{{ b.brand }}" {% if filters.brand == b.brand %}checked{% endif %} onchange="this.form.submit()" class="accent-peengh-navy">
+        <span class="text-sm text-gray-700">{{ b.brand }} <span class="text-xs text-gray-400">({{ b.count }})</span></span>
+      </label>
+      {% endfor %}
+      {% if filters.brand %}
+      <label class="flex items-center gap-2 cursor-pointer tap-target">
+        <input type="radio" name="brand" value="" {% if not filters.brand %}checked{% endif %} onchange="this.form.submit()" class="accent-peengh-navy">
+        <span class="text-sm text-peengh-terra font-medium">Clear brand</span>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Price Range -->
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Price Range</label>
+    <div class="flex gap-2">
+      <input type="number" name="min_price" value="{{ filters.min_price }}" placeholder="Min" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm tap-target focus:outline-none focus:ring-2 focus:ring-peengh-amber" onchange="this.form.submit()">
+      <input type="number" name="max_price" value="{{ filters.max_price }}" placeholder="Max" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm tap-target focus:outline-none focus:ring-2 focus:ring-peengh-amber" onchange="this.form.submit()">
+    </div>
+  </div>
+
+  <!-- Storage -->
+  {% if storage_options %}
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Storage</label>
+    <div class="flex flex-wrap gap-2">
+      {% for s in storage_options %}
+      <label class="cursor-pointer">
+        <input type="radio" name="storage" value="{{ s.storage }}" {% if filters.storage == s.storage %}checked{% endif %} onchange="this.form.submit()" class="peer hidden">
+        <span class="inline-block px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 peer-checked:bg-peengh-navy peer-checked:text-white peer-checked:border-peengh-navy transition tap-target">{{ s.storage }}</span>
+      </label>
+      {% endfor %}
+      {% if filters.storage %}
+      <label class="cursor-pointer">
+        <input type="radio" name="storage" value="" {% if not filters.storage %}checked{% endif %} onchange="this.form.submit()" class="peer hidden">
+        <span class="inline-block px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-peengh-terra peer-checked:bg-peengh-terra peer-checked:text-white transition tap-target">Clear</span>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- RAM -->
+  {% if ram_options %}
+  <div>
+    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">RAM</label>
+    <div class="flex flex-wrap gap-2">
+      {% for r in ram_options %}
+      <label class="cursor-pointer">
+        <input type="radio" name="ram" value="{{ r.ram }}" {% if filters.ram == r.ram %}checked{% endif %} onchange="this.form.submit()" class="peer hidden">
+        <span class="inline-block px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 peer-checked:bg-peengh-navy peer-checked:text-white peer-checked:border-peengh-navy transition tap-target">{{ r.ram }}</span>
+      </label>
+      {% endfor %}
+      {% if filters.ram %}
+      <label class="cursor-pointer">
+        <input type="radio" name="ram" value="" {% if not filters.ram %}checked{% endif %} onchange="this.form.submit()" class="peer hidden">
+        <span class="inline-block px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-peengh-terra peer-checked:bg-peengh-terra peer-checked:text-white transition tap-target">Clear</span>
+      </label>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Clear All -->
+  {% if filters.brand or filters.min_price or filters.max_price or filters.storage or filters.ram %}
+  <a href="/mobiles{% if filters.sort %}?sort={{ filters.sort }}{% endif %}" class="block w-full text-center py-2.5 rounded-lg border border-peengh-terra text-peengh-terra text-sm font-medium hover:bg-peengh-terra hover:text-white transition tap-target">
+    Clear All Filters
+  </a>
+  {% endif %}
+</form>

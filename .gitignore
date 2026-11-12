@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local DB backups
+*.db.bak
+*.db-journal
+
+# Accidentally downloaded files
+*.pkg
+*.dmg
+*.exe
+*.msi
+
+# Test files
+test_*.py

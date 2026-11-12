@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — Peengh{% endblock %}
+
+{% block content %}
+<div class="max-w-[1200px] mx-auto px-4 py-8">
+  <div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl sm:text-3xl font-bold text-peengh-navy mb-6">Privacy Policy</h1>
+
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 space-y-5 text-sm text-gray-700 leading-relaxed">
+      <p>
+        At <strong>Peengh</strong>, we respect your privacy. This policy explains what information we collect and how we use it.
+      </p>
+
+      <h2 class="text-base font-bold text-peengh-navy pt-2">Information We Collect</h2>
+      <ul class="list-disc list-inside space-y-1 text-gray-600">
+        <li>Search queries you enter on our site</li>
+        <li>Product pages you view (for trending/popularity rankings)</li>
+        <li>Basic browser info (user agent) for performance optimization</li>
+      </ul>
+
+      <h2 class="text-base font-bold text-peengh-navy pt-2">What We Don't Collect</h2>
+      <ul class="list-disc list-inside space-y-1 text-gray-600">
+        <li>We do <strong>not</strong> collect personal information like name, phone, or address</li>
+        <li>We do <strong>not</strong> use tracking cookies for advertising</li>
+        <li>We do <strong>not</strong> sell or share your data with third parties</li>
+      </ul>
+
+      <h2 class="text-base font-bold text-peengh-navy pt-2">Affiliate Disclosure</h2>
+      <p>
+        Some links on Peengh may be affiliate links. This means we may earn a small commission
+        if you click through and make a purchase, at <strong>no extra cost to you</strong>.
+        This helps keep Peengh free to use. We only link to stores we trust.
+      </p>
+
+      <h2 class="text-base font-bold text-peengh-navy pt-2">Price Accuracy</h2>
+      <p>
+        Prices shown on Peengh are scraped from retailer websites and updated daily.
+        However, prices may change at any time. <strong>Always confirm the final price on the store's website</strong> before making a purchase.
+      </p>
+
+      <h2 class="text-base font-bold text-peengh-navy pt-2">Contact</h2>
+      <p>
+        If you have any questions about this policy, contact us at
+        <a href="mailto:peengh.biz@gmail.com" class="text-peengh-teal hover:underline">peengh.biz@gmail.com</a>.
+      </p>
+
+      <p class="text-xs text-gray-400 pt-4 border-t border-gray-100">
+        Last updated: {{ now.strftime('%B %Y') }}
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

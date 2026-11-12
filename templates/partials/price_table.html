@@ -1,0 +1,86 @@
+{% if offers %}
+<!-- Desktop Table -->
+<div class="hidden sm:block overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-gray-100">
+        <th class="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">Store</th>
+        <th class="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">Price</th>
+        <th class="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">Stock</th>
+        <th class="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">Updated</th>
+        <th class="text-right py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in offers %}
+      <tr class="border-b border-gray-50 {% if loop.first %}bg-peengh-teal/5{% endif %}">
+        <td class="py-3 px-3">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-gray-800">{{ o.retailer_name }}</span>
+            {% if loop.first %}
+            <span class="px-1.5 py-0.5 bg-peengh-teal text-white text-[10px] font-bold rounded">LOWEST</span>
+            {% endif %}
+          </div>
+        </td>
+        <td class="py-3 px-3">
+          <span class="font-bold {% if loop.first %}text-peengh-teal text-base{% else %}text-gray-800{% endif %}">
+            Rs {{ "{:,}".format(o.price) }}
+          </span>
+        </td>
+        <td class="py-3 px-3">
+          {% if o.in_stock %}
+          <span class="text-xs font-medium text-green-600">In Stock</span>
+          {% else %}
+          <span class="text-xs font-medium text-amber-600">Out of Stock</span>
+          {% endif %}
+        </td>
+        <td class="py-3 px-3 text-xs text-gray-400">
+          {{ human_time_ago(o.last_checked) }}
+        </td>
+        <td class="py-3 px-3 text-right">
+          <a href="{{ o.url }}" target="_blank" rel="noopener" class="inline-block bg-peengh-navy text-white text-xs font-semibold px-4 py-2 rounded-lg tap-target hover:bg-peengh-amber transition">
+            Go to Store
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Mobile Stacked Cards -->
+<div class="sm:hidden space-y-3">
+  {% for o in offers %}
+  <div class="border border-gray-100 rounded-xl p-3 {% if loop.first %}bg-peengh-teal/5 border-peengh-teal/20{% else %}bg-white{% endif %}">
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-sm text-gray-800">{{ o.retailer_name }}</span>
+        {% if loop.first %}
+        <span class="px-1.5 py-0.5 bg-peengh-teal text-white text-[10px] font-bold rounded">LOWEST</span>
+        {% endif %}
+      </div>
+      {% if o.in_stock %}
+      <span class="text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">In Stock</span>
+      {% else %}
+      <span class="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Out</span>
+      {% endif %}
+    </div>
+    <div class="flex items-baseline gap-2 mb-2">
+      <span class="text-lg font-extrabold {% if loop.first %}text-peengh-teal{% else %}text-gray-800{% endif %}">
+        Rs {{ "{:,}".format(o.price) }}
+      </span>
+    </div>
+    <div class="flex items-center justify-between">
+      <span class="text-[10px] text-gray-400">Updated {{ human_time_ago(o.last_checked) }}</span>
+      <a href="{{ o.url }}" target="_blank" rel="noopener" class="bg-peengh-navy text-white text-xs font-semibold px-4 py-2 rounded-lg tap-target hover:bg-peengh-amber transition">
+        Go to Store
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-8 text-gray-500 text-sm">
+  No prices available right now. Try refreshing.
+</div>
+{% endif %}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.peengh.dailyscrape</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/rafeeh/Downloads/peengh/scripts/auto_scrape.sh</string>
+    </array>
+
+    <!-- Run daily at 12:00 PM Pakistan time (07:00 UTC) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Run even if Mac was asleep — will run when woken up -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Standard output/error logs -->
+    <key>StandardOutPath</key>
+    <string>/Users/rafeeh/Downloads/peengh/scrape.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/rafeeh/Downloads/peengh/scrape.log</string>
+</dict>
+</plist>

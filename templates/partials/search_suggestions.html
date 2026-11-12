@@ -1,0 +1,23 @@
+{% if results %}
+  {% for r in results %}
+  <a href="/mobiles/{{ r.slug }}" class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
+    <div class="w-10 h-10 flex-shrink-0 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+      {% if r.image_url %}
+      <img src="{{ r.image_url }}" alt="" class="w-full h-full object-contain">
+      {% endif %}
+    </div>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium text-gray-800 truncate">{{ r.title }}</div>
+      <div class="text-xs text-gray-500">
+        {% if r.lowest_price %}From Rs {{ "{:,}".format(r.lowest_price) }}{% endif %}
+        {% if r.storage %}· {{ r.storage }}{% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+  <a href="/search?q={{ q|urlencode }}" class="block px-4 py-2.5 text-sm font-medium text-peengh-navy bg-gray-50 hover:bg-gray-100 transition text-center">
+    See all results for "{{ q }}"
+  </a>
+{% else %}
+  <div class="px-4 py-4 text-sm text-gray-500 text-center">No results found</div>
+{% endif %}

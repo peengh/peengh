@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="description" content="{% block meta_desc %}Compare mobile phone prices in Pakistan from TeleX and Mega.pk. Khareedo, Soch Samajh Kar.{% endblock %}">
+  <title>{% block title %}Peengh{% endblock %}</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            peengh: {
+              navy: '#0B2A4A',
+              amber: '#E99A24',
+              teal: '#168F87',
+              terra: '#C65D3B',
+              cream: '#F5F0E8',
+              white: '#FFFFFF',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+
+  <!-- Chart.js (lazy loaded on product pages) -->
+  {% block head_extra %}{% endblock %}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/peengh.css') }}">
+
+  <style>
+    /* Brand edge colors */
+    body { border-top: 4px solid #0B2A4A; border-bottom: 4px solid #E99A24; }
+    /* Smooth scroll */
+    html { scroll-behavior: smooth; }
+    /* Minimum tap target */
+    .tap-target { min-height: 44px; min-width: 44px; }
+    /* Hide scrollbar for horizontal scroll */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Skeleton loading */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    /* Sticky search shadow */
+    .search-sticky { box-shadow: 0 2px 8px rgba(11,42,74,0.08); }
+  </style>
+</head>
+<body class="bg-peengh-cream text-gray-800 font-sans antialiased" x-data="{ mobileMenu: false, filterOpen: false }">
+
+  <!-- Header -->
+  <header class="bg-peengh-navy text-white sticky top-0 z-50">
+    <div class="max-w-[1200px] mx-auto px-4 h-[120px] sm:h-[140px] md:h-[160px] flex items-center justify-between">
+      <!-- Logo -->
+      <a href="/" class="tap-target flex items-center">
+        <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="Peengh — Khareedo, Soch Samajh Kar" class="h-24 sm:h-32 md:h-40 w-auto flex-shrink-0" onerror="this.src='{{ url_for('static', filename='images/logo-lockup.png') }}'">
+      </a>
+
+      <!-- Desktop Nav -->
+      <nav class="hidden md:flex items-center gap-8 text-base font-medium">
+        <a href="/mobiles" class="hover:text-peengh-amber transition tap-target flex items-center">Mobiles</a>
+        <a href="/about" class="hover:text-peengh-amber transition tap-target flex items-center">About</a>
+        <a href="/contact" class="hover:text-peengh-amber transition tap-target flex items-center">Contact</a>
+        <a href="/mobiles" class="bg-peengh-amber text-peengh-navy px-5 py-2.5 rounded-xl font-bold tap-target hover:bg-white transition">Compare & Save</a>
+      </nav>
+
+      <!-- Mobile Menu Button -->
+      <button @click="mobileMenu = !mobileMenu" class="md:hidden tap-target p-2" aria-label="Menu">
+        <svg x-show="!mobileMenu" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg x-show="mobileMenu" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Mobile Menu -->
+    <div x-show="mobileMenu" x-transition class="md:hidden bg-peengh-navy border-t border-white/10">
+      <div class="px-4 py-3 space-y-1">
+        <a href="/mobiles" class="block py-2.5 tap-target hover:text-peengh-amber">Mobiles</a>
+        <a href="/about" class="block py-2.5 tap-target hover:text-peengh-amber">About</a>
+        <a href="/contact" class="block py-2.5 tap-target hover:text-peengh-amber">Contact</a>
+        <a href="/privacy" class="block py-2.5 tap-target hover:text-peengh-amber">Privacy</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-peengh-navy text-white mt-12">
+    <div class="max-w-[1200px] mx-auto px-4 py-10">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-8">
+        <!-- Brand -->
+        <div>
+          <div class="mb-3">
+            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="Peengh" height="44" class="h-11 w-auto" onerror="this.src='{{ url_for('static', filename='images/logo-lockup.png') }}'">
+          </div>
+          <p class="text-sm text-gray-300 leading-relaxed">
+            Overpay Karna Mana Hai
+          </p>
+        </div>
+        <!-- Links -->
+        <div>
+          <h4 class="font-semibold mb-3 text-peengh-amber">Quick Links</h4>
+          <div class="space-y-2 text-sm text-gray-300">
+            <a href="/mobiles" class="block hover:text-white transition">All Mobiles</a>
+            <a href="/about" class="block hover:text-white transition">About Us</a>
+            <a href="/contact" class="block hover:text-white transition">Contact</a>
+            <a href="/privacy" class="block hover:text-white transition">Privacy Policy</a>
+          </div>
+        </div>
+        <!-- Contact -->
+        <div>
+          <h4 class="font-semibold mb-3 text-peengh-amber">Contact</h4>
+          <div class="space-y-2 text-sm text-gray-300">
+            <p>Email: peengh.biz@gmail.com</p>
+            <p>Website: peengh.com</p>
+          </div>
+        </div>
+      </div>
+      <div class="border-t border-white/10 mt-8 pt-6 text-center text-xs text-gray-400">
+        &copy; {{ now.year }} Peengh. All rights reserved. Prices may change, confirm at the store.
+      </div>
+    </div>
+  </footer>
+
+  <!-- HTMX CSRF & Config -->
+  <script>
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+      evt.detail.headers['X-Requested-With'] = 'XMLHttpRequest';
+    });
+  </script>
+
+  <script src="{{ url_for('static', filename='js/peengh.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

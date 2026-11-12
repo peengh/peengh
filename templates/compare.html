@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ products[0].title }} vs {{ products[1].title }} — Peengh{% endblock %}
+
+{% block content %}
+<div class="max-w-[1200px] mx-auto px-4 py-6">
+  <!-- Breadcrumb -->
+  <nav class="text-xs sm:text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-peengh-navy">Home</a>
+    <span class="mx-1.5">/</span>
+    <span class="text-gray-800 font-medium">Compare</span>
+  </nav>
+
+  <h1 class="text-xl sm:text-2xl font-bold text-peengh-navy mb-6">Side-by-Side Comparison</h1>
+
+  <!-- Compare Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for p in products %}
+    <div class="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
+      <div class="aspect-square bg-gray-50 rounded-xl mb-4 flex items-center justify-center overflow-hidden">
+        {% if p.image_url %}
+        <img src="{{ p.image_url }}" alt="{{ p.title }}" class="w-full h-full object-contain">
+        {% else %}
+        <div class="skeleton w-full h-full rounded-xl"></div>
+        {% endif %}
+      </div>
+      <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-1">{{ p.title }}</h2>
+      <p class="text-sm text-gray-500 mb-3">{{ p.brand }}</p>
+
+      <div class="bg-peengh-teal/10 rounded-xl p-3 mb-4">
+        <p class="text-xs text-gray-500">Lowest Price</p>
+        <p class="text-xl font-extrabold text-peengh-teal">Rs {{ "{:,}".format(p.lowest_price) if p.lowest_price else "N/A" }}</p>
+      </div>
+
+      <!-- Specs table -->
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between py-1.5 border-b border-gray-50">
+          <span class="text-gray-500">RAM</span>
+          <span class="font-medium">{{ p.ram or "—" }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-gray-50">
+          <span class="text-gray-500">Storage</span>
+          <span class="font-medium">{{ p.storage or "—" }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-gray-50">
+          <span class="text-gray-500">Display</span>
+          <span class="font-medium">{{ p.display or "—" }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-gray-50">
+          <span class="text-gray-500">Battery</span>
+          <span class="font-medium">{{ p.battery or "—" }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-gray-50">
+          <span class="text-gray-500">Camera</span>
+          <span class="font-medium">{{ p.camera or "—" }}</span>
+        </div>
+      </div>
+
+      <!-- Store prices -->
+      <div class="mt-4 space-y-2">
+        {% for o in p.offers %}
+        <div class="flex items-center justify-between py-2 {% if loop.first %}bg-peengh-teal/5 rounded-lg px-2{% endif %}">
+          <div>
+            <span class="text-sm font-medium">{{ o.retailer_name }}</span>
+            {% if loop.first %}<span class="ml-1 text-[10px] bg-peengh-teal text-white px-1 rounded">LOWEST</span>{% endif %}
+          </div>
+          <div class="text-right">
+            <span class="text-sm font-bold {% if loop.first %}text-peengh-teal{% else %}text-gray-800{% endif %}">Rs {{ "{:,}".format(o.price) }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <a href="/mobiles/{{ p.slug }}" class="block mt-4 text-center bg-peengh-navy text-white py-2.5 rounded-xl text-sm font-semibold tap-target hover:bg-peengh-amber transition">
+        View Details
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

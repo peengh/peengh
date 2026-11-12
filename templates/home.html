@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Peengh — Compare Mobile Prices in Pakistan{% endblock %}
+
+{% block content %}
+<!-- Hero Search -->
+<section class="bg-peengh-navy text-white py-12 sm:py-16">
+  <div class="max-w-[1200px] mx-auto px-4 text-center">
+    <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-1">
+      Compare Prices.
+    </h1>
+    <h2 class="text-3xl sm:text-4xl md:text-5xl font-extrabold text-peengh-amber mb-5">
+      Save Smart.
+    </h2>
+    <p class="text-sm sm:text-base text-gray-300 mb-8 max-w-xl mx-auto leading-relaxed">
+      Find the best deals across Pakistan's top mobile retailers. No bias, just honest price comparisons.
+    </p>
+
+    <!-- Search Bar -->
+    <div class="relative max-w-2xl mx-auto" x-data="{ showSuggestions: false }" @click.away="showSuggestions = false">
+      <form action="/search" method="get" class="relative">
+        <input
+          type="text"
+          name="q"
+          placeholder="Search iPhone, Samsung, Xiaomi..."
+          class="w-full h-14 sm:h-16 pl-14 pr-6 rounded-2xl text-gray-800 text-base sm:text-lg focus:outline-none focus:ring-2 focus:ring-peengh-amber shadow-xl"
+          hx-get="/api/search-suggestions"
+          hx-trigger="keyup changed delay:200ms, search"
+          hx-target="#search-suggestions"
+          hx-swap="innerHTML"
+          @focus="showSuggestions = true"
+          @input="if($event.target.value.length < 2) showSuggestions = false; else showSuggestions = true"
+          autocomplete="off"
+        >
+        <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+      </form>
+
+      <!-- Live Suggestions Dropdown -->
+      <div
+        id="search-suggestions"
+        x-show="showSuggestions"
+        x-cloak
+        class="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-xl overflow-hidden z-40 text-left"
+      ></div>
+    </div>
+  </div>
+</section>
+
+<!-- Stats Bar -->
+<section class="bg-white border-b border-gray-100">
+  <div class="max-w-[1200px] mx-auto px-4 py-6 sm:py-8">
+    <div class="grid grid-cols-3 gap-4 text-center">
+      <div>
+        <p class="text-2xl sm:text-3xl font-extrabold text-peengh-navy">201</p>
+        <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Products</p>
+      </div>
+      <div>
+        <p class="text-2xl sm:text-3xl font-extrabold text-peengh-navy">3</p>
+        <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Retailers</p>
+      </div>
+      <div>
+        <p class="text-2xl sm:text-3xl font-extrabold text-peengh-navy">17</p>
+        <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Comparisons</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Category Tiles -->
+<section class="max-w-[1200px] mx-auto px-4 py-8">
+  <h2 class="text-lg sm:text-xl font-bold text-peengh-navy mb-4">Browse by Brand</h2>
+  <div class="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+    <a href="/mobiles" class="flex-shrink-0 bg-white rounded-xl px-5 py-3 shadow-sm border border-gray-100 tap-target hover:shadow-md hover:border-peengh-amber transition text-sm font-semibold text-peengh-navy">
+      All Mobiles
+    </a>
+    {% for b in brands %}
+    <a href="/brands/{{ b.brand }}" class="flex-shrink-0 bg-white rounded-xl px-5 py-3 shadow-sm border border-gray-100 tap-target hover:shadow-md hover:border-peengh-amber transition text-sm font-semibold text-peengh-navy">
+      {{ b.brand }}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Trending Phones -->
+<section class="max-w-[1200px] mx-auto px-4 py-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg sm:text-xl font-bold text-peengh-navy">Trending Phones</h2>
+    <a href="/mobiles?sort=popular" class="text-sm font-medium text-peengh-teal hover:underline tap-target">View all</a>
+  </div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+    {% for p in trending %}
+    <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-amber transition group tap-target">
+      <div class="aspect-square bg-gray-50 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+        {% if p.image_url %}
+        <img src="{{ p.image_url }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300">
+        {% else %}
+        <div class="skeleton w-full h-full rounded-lg"></div>
+        {% endif %}
+      </div>
+      <h3 class="text-xs sm:text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">{{ p.title }}</h3>
+      <div class="flex items-baseline gap-1.5">
+        <span class="text-sm sm:text-base font-bold text-peengh-teal">Rs {{ "{:,}".format(p.lowest_price) if p.lowest_price else "N/A" }}</span>
+        {% if p.highest_price and p.highest_price > p.lowest_price %}
+        <span class="text-[10px] sm:text-xs text-gray-400 line-through">Rs {{ "{:,}".format(p.highest_price) }}</span>
+        {% endif %}
+      </div>
+      {% if p.highest_price and p.highest_price > p.lowest_price %}
+      <span class="inline-block mt-1 text-[10px] font-semibold text-peengh-terra bg-peengh-terra/10 px-1.5 py-0.5 rounded">
+        Save Rs {{ "{:,}".format(p.highest_price - p.lowest_price) }}
+      </span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Price Drops -->
+{% if price_drops %}
+<section class="max-w-[1200px] mx-auto px-4 py-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg sm:text-xl font-bold text-peengh-navy">Latest Price Drops</h2>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+    {% for p in price_drops %}
+    <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-terra transition flex gap-3 tap-target">
+      <div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
+        {% if p.image_url %}
+        <img src="{{ p.image_url }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain">
+        {% else %}
+        <div class="skeleton w-full h-full rounded-lg"></div>
+        {% endif %}
+      </div>
+      <div class="flex-1 min-w-0">
+        <h3 class="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">{{ p.title }}</h3>
+        <div class="flex items-baseline gap-2">
+          <span class="text-base font-bold text-peengh-teal">Rs {{ "{:,}".format(p.lowest_price) }}</span>
+          <span class="text-xs text-gray-400 line-through">Rs {{ "{:,}".format(p.highest_price) }}</span>
+        </div>
+        <span class="inline-block mt-1.5 text-xs font-semibold text-peengh-terra bg-peengh-terra/10 px-2 py-0.5 rounded-full">
+          Save Rs {{ "{:,}".format(p.savings) }}
+        </span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Trust Banner -->
+<section class="bg-peengh-navy text-white mt-10">
+  <div class="max-w-[1200px] mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+      <div>
+        <div class="w-12 h-12 bg-peengh-amber/20 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-peengh-amber" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <h3 class="font-semibold text-sm">Daily Price Updates</h3>
+        <p class="text-xs text-gray-300 mt-1">Fresh data every morning</p>
+      </div>
+      <div>
+        <div class="w-12 h-12 bg-peengh-teal/20 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-peengh-teal" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2"/></svg>
+        </div>
+        <h3 class="font-semibold text-sm">Neutral Comparison</h3>
+        <p class="text-xs text-gray-300 mt-1">We don't sell, we just show</p>
+      </div>
+      <div>
+        <div class="w-12 h-12 bg-peengh-terra/20 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6 text-peengh-terra" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <h3 class="font-semibold text-sm">Best Deals First</h3>
+        <p class="text-xs text-gray-300 mt-1">Lowest price always on top</p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

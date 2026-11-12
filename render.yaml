@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: peengh
+    runtime: python
+    plan: standard
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT wsgi:application
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_PATH
+        value: peengh.db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: MIN_REFRESH_INTERVAL
+        value: "45"
