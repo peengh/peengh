@@ -214,6 +214,16 @@ Prices update automatically every day at **11 AM Pakistan time**.
 4. Wait 2-3 minutes
 5. Green checkmark = success
 
+### 4.4 Optional: use a retailer-supplied feed
+
+1. Ask the retailer for a JSON/CSV product feed or documented API, including permission and credentials if required.
+2. Open GitHub → `peengh` → **Settings** → **Secrets and variables** → **Actions**.
+3. Add a repository secret named `STORE_FEEDS` using the JSON format documented in `README.md`.
+4. Run the workflow manually and check the `Updating ...` log lines for `Loaded ... from direct feed`.
+5. Confirm the product page shows that retailer's price and working store link.
+
+The workflow passes this secret only to the update process. Do not put feed credentials in `peengh.db`, source files, or workflow logs.
+
 ---
 
 ## Step 5: Verify

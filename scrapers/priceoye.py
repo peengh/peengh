@@ -11,35 +11,70 @@ from image_resolver import save_scraped_image
 BASE_URL = "https://priceoye.pk"
 
 
+def _product_data(soup):
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.get_text())
+        except (json.JSONDecodeError, TypeError):
+            continue
+        candidates = data if isinstance(data, list) else [data]
+        for candidate in candidates:
+            if isinstance(candidate, dict) and candidate.get("@type") == "Product":
+                return candidate
+    return {}
+
+
 def check_price(product_url):
     try:
         resp = rate_limited_request(product_url, "priceoye", min_delay=2.0, max_delay=4.0)
         soup = BeautifulSoup(resp.text, "html.parser")
+        data = _product_data(soup)
         title_tag = soup.find("h1")
-        title = title_tag.get_text(strip=True) if title_tag else ""
+        meta_title = soup.find("meta", property="og:title")
+        title = data.get("name") or (
+            title_tag.get_text(strip=True) if title_tag else ""
+        ) or (meta_title.get("content", "") if meta_title else "")
+
+        offers = data.get("offers", {})
+        if isinstance(offers, list):
+            offers = offers[0] if offers else {}
         price = None
-        meta_price = soup.find("meta", property="product:price:amount")
-        if meta_price and meta_price.get("content"):
+        if isinstance(offers, dict) and offers.get("price"):
             try:
-                price = int(float(meta_price["content"]))
-            except ValueError:
+                price = int(float(offers["price"]))
+            except (ValueError, TypeError):
                 pass
+        if price is None:
+            meta_price = soup.find("meta", property="product:price:amount")
+            if meta_price and meta_price.get("content"):
+                try:
+                    price = int(float(meta_price["content"]))
+                except ValueError:
+                    pass
         if price is None:
             for sel in [".price", ".product-price", ".current-price", "[class*='price']"]:
                 el = soup.select_one(sel)
                 if el:
-                    nums = re.findall(r'[\d,]+', el.get_text(strip=True))
-                    if nums:
-                        try:
-                            price = int(nums[0].replace(",", ""))
-                            break
-                        except ValueError:
-                            pass
-        in_stock = not bool(soup.find(text=re.compile(r'out of stock|sold out', re.I)))
-        image_url = ""
-        img_el = soup.select_one(".product-image img, .main-image img, .zoom-image img, #zoom1 img")
-        if img_el:
-            image_url = img_el.get("data-src") or img_el.get("src", "")
+                    price = parse_price(el.get_text(strip=True))
+                    if price:
+                        break
+
+        availability = offers.get("availability", "") if isinstance(offers, dict) else ""
+        if availability:
+            in_stock = availability.rsplit("/", 1)[-1].lower() == "instock"
+        else:
+            stock_el = soup.select_one("[class*='availability'], [class*='stock']")
+            in_stock = not bool(
+                stock_el and re.search(r'out of stock|sold out', stock_el.get_text(), re.I)
+            )
+
+        image_url = data.get("image", "")
+        if isinstance(image_url, list):
+            image_url = image_url[0] if image_url else ""
+        if not image_url:
+            img_el = soup.select_one(".product-image img, .main-image img, .zoom-image img, #zoom1 img")
+            if img_el:
+                image_url = img_el.get("data-src") or img_el.get("src", "")
         if not image_url:
             meta_img = soup.find("meta", property="og:image")
             if meta_img:
@@ -268,6 +303,7 @@ def _extract_products_from_soup(soup):
                     image = "https:" + image
                 elif image.startswith("/"):
                     image = BASE_URL + image
+                image = re.sub(r"-100x100(?=\.[a-z]+$)", "-500x500", image, flags=re.I)
 
             brand = _extract_brand(title)
             results.append({"title": title, "price": price, "url": product_url,

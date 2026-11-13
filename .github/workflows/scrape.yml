@@ -34,7 +34,9 @@ jobs:
       - name: Init DB
         run: python database.py
 
-      - name: Run scrapers
+      - name: Update retailer prices
+        env:
+          STORE_FEEDS: ${{ secrets.STORE_FEEDS }}
         run: python daily_update.py
 
       - name: Commit and push updated DB

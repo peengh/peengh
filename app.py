@@ -16,6 +16,16 @@ import config
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
+PRICED_PRODUCT_SQL = """
+    p.lowest_price > 0
+    AND EXISTS (
+        SELECT 1 FROM offers AS available_offer
+        WHERE available_offer.product_id = p.id
+          AND available_offer.in_stock = 1
+          AND available_offer.price > 0
+    )
+"""
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -56,6 +66,7 @@ def inject_helpers():
     return {
         "human_time_ago": human_time_ago,
         "now": datetime.utcnow(),
+        "product_placeholder": url_for("static", filename="images/product-placeholder.svg"),
     }
 
 
@@ -67,40 +78,46 @@ def inject_helpers():
 def home():
     conn = get_db_conn()
 
-    # Trending phones — most viewed in last 7 days, fallback to newest
-    trending = conn.execute("""
-        SELECT id, title, brand, slug, image_url, lowest_price, highest_price, view_count
-        FROM products
-        ORDER BY view_count DESC, created_at DESC
+    # Trending phones with at least one currently usable price
+    trending = conn.execute(f"""
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url,
+               p.lowest_price, p.highest_price, p.view_count
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL}
+        ORDER BY p.view_count DESC, p.created_at DESC
         LIMIT 8
     """).fetchall()
     trending = enrich_products_with_images([dict(r) for r in trending])
 
     # Latest price drops — products where lowest_price < highest_price (gap exists)
-    price_drops = conn.execute("""
-        SELECT id, title, brand, slug, image_url, lowest_price, highest_price,
-               (highest_price - lowest_price) AS savings
-        FROM products
-        WHERE highest_price > lowest_price AND lowest_price > 0
+    price_drops = conn.execute(f"""
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url,
+               p.lowest_price, p.highest_price,
+               (p.highest_price - p.lowest_price) AS savings
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND p.highest_price > p.lowest_price
         ORDER BY savings DESC
         LIMIT 6
     """).fetchall()
     price_drops = enrich_products_with_images([dict(r) for r in price_drops])
 
     # Popular brands for category tiles
-    brands = conn.execute("""
-        SELECT brand, COUNT(*) AS count
-        FROM products
-        GROUP BY brand
+    brands = conn.execute(f"""
+        SELECT p.brand, COUNT(*) AS count
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL}
+        GROUP BY p.brand
         ORDER BY count DESC
         LIMIT 8
     """).fetchall()
-    stats = conn.execute("""
+    stats = conn.execute(f"""
         SELECT
-            (SELECT COUNT(*) FROM products) AS products,
-            (SELECT COUNT(DISTINCT retailer_id) FROM offers) AS retailers,
+            (SELECT COUNT(*) FROM products p WHERE {PRICED_PRODUCT_SQL}) AS products,
+            (SELECT COUNT(DISTINCT retailer_id) FROM offers
+             WHERE in_stock = 1 AND price > 0) AS retailers,
             (SELECT COUNT(*) FROM (
                 SELECT product_id FROM offers
+                WHERE in_stock = 1 AND price > 0
                 GROUP BY product_id HAVING COUNT(*) >= 2
             )) AS comparisons
     """).fetchone()
@@ -138,38 +155,39 @@ def category():
         max_price = None
 
     # Build query
-    where_clauses = ["1=1"]
+    where_clauses = [PRICED_PRODUCT_SQL]
     params = []
 
     if brand_filter:
-        where_clauses.append("brand = ?")
+        where_clauses.append("p.brand = ?")
         params.append(brand_filter)
     if min_price is not None:
-        where_clauses.append("lowest_price >= ?")
+        where_clauses.append("p.lowest_price >= ?")
         params.append(min_price)
     if max_price is not None:
-        where_clauses.append("lowest_price <= ?")
+        where_clauses.append("p.lowest_price <= ?")
         params.append(max_price)
     if storage_filter:
-        where_clauses.append("storage = ?")
+        where_clauses.append("p.storage = ?")
         params.append(storage_filter)
     if ram_filter:
-        where_clauses.append("ram = ?")
+        where_clauses.append("p.ram = ?")
         params.append(ram_filter)
 
     where_sql = " AND ".join(where_clauses)
 
     # Sort logic
     order_sql = {
-        "price_low": "lowest_price ASC NULLS LAST",
-        "price_high": "highest_price DESC NULLS LAST",
-        "newest": "created_at DESC",
-    }.get(sort, "view_count DESC, created_at DESC")
+        "price_low": "p.lowest_price ASC",
+        "price_high": "p.lowest_price DESC",
+        "newest": "p.created_at DESC",
+    }.get(sort, "p.view_count DESC, p.created_at DESC")
 
     # Products
     products = conn.execute(f"""
-        SELECT id, title, brand, slug, image_url, lowest_price, highest_price, storage, ram, view_count
-        FROM products
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url,
+               p.lowest_price, p.highest_price, p.storage, p.ram, p.view_count
+        FROM products p
         WHERE {where_sql}
         ORDER BY {order_sql}
         LIMIT 60
@@ -177,16 +195,21 @@ def category():
     products = enrich_products_with_images([dict(r) for r in products])
 
     # Filter options
-    all_brands = conn.execute("""
-        SELECT brand, COUNT(*) AS count FROM products GROUP BY brand ORDER BY count DESC
+    all_brands = conn.execute(f"""
+        SELECT p.brand, COUNT(*) AS count FROM products p
+        WHERE {PRICED_PRODUCT_SQL}
+        GROUP BY p.brand ORDER BY count DESC
     """).fetchall()
-    all_storage = conn.execute("""
-        SELECT storage, COUNT(*) AS count FROM products WHERE storage IS NOT NULL
-        GROUP BY storage ORDER BY count DESC
+    all_storage = conn.execute(f"""
+        SELECT p.storage, COUNT(*) AS count FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND p.storage IS NOT NULL AND p.storage != ''
+        GROUP BY p.storage ORDER BY count DESC
     """).fetchall()
-    all_ram = conn.execute("""
-        SELECT ram, COUNT(*) AS count FROM products WHERE ram IS NOT NULL
-        GROUP BY ram ORDER BY count DESC
+    all_ram = conn.execute(f"""
+        SELECT p.ram, COUNT(*) AS count FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND p.ram GLOB '[0-9]*GB'
+          AND CAST(REPLACE(UPPER(p.ram), 'GB', '') AS INTEGER) BETWEEN 1 AND 48
+        GROUP BY p.ram ORDER BY count DESC
     """).fetchall()
 
     conn.close()
@@ -239,7 +262,7 @@ def product(slug):
         FROM offers o
         JOIN retailers r ON o.retailer_id = r.id
         WHERE o.product_id = ?
-        ORDER BY o.price ASC
+        ORDER BY o.in_stock DESC, o.price ASC
     """, (product["id"],)).fetchall()
 
     # Check if any price is stale (> 1 hour)
@@ -276,11 +299,11 @@ def product(slug):
         product["image_url"] = resolved["image_url"]
 
     # Similar phones — same brand, different model, closest price
-    similar = conn.execute("""
-        SELECT id, title, brand, slug, image_url, lowest_price
-        FROM products
-        WHERE brand = ? AND id != ? AND lowest_price > 0
-        ORDER BY ABS(lowest_price - ?) ASC
+    similar = conn.execute(f"""
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND p.brand = ? AND p.id != ?
+        ORDER BY ABS(p.lowest_price - ?) ASC
         LIMIT 6
     """, (product["brand"], product["id"], product.get("lowest_price", 0) or 0)).fetchall()
     similar = enrich_products_with_images([dict(r) for r in similar])
@@ -317,8 +340,9 @@ def product(slug):
 def compare(slug_a, slug_b):
     conn = get_db_conn()
 
-    rows = conn.execute("""
-        SELECT * FROM products WHERE slug IN (?, ?)
+    rows = conn.execute(f"""
+        SELECT p.* FROM products p
+        WHERE p.slug IN (?, ?) AND {PRICED_PRODUCT_SQL}
     """, (slug_a, slug_b)).fetchall()
 
     if len(rows) < 2:
@@ -336,7 +360,7 @@ def compare(slug_a, slug_b):
             FROM offers o
             JOIN retailers r ON o.retailer_id = r.id
             WHERE o.product_id = ?
-            ORDER BY o.price ASC
+            ORDER BY o.in_stock DESC, o.price ASC
         """, (p["id"],)).fetchall()
         p["offers"] = [dict(o) for o in offers]
 
@@ -354,11 +378,12 @@ def compare(slug_a, slug_b):
 def brand_page(brand):
     conn = get_db_conn()
 
-    products = conn.execute("""
-        SELECT id, title, brand, slug, image_url, lowest_price, highest_price, storage, ram
-        FROM products
-        WHERE brand = ?
-        ORDER BY lowest_price ASC NULLS LAST
+    products = conn.execute(f"""
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url,
+               p.lowest_price, p.highest_price, p.storage, p.ram
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND p.brand = ?
+        ORDER BY p.lowest_price ASC
     """, (brand,)).fetchall()
     products = enrich_products_with_images([dict(r) for r in products])
 
@@ -421,7 +446,7 @@ def search():
         SELECT DISTINCT p.id, p.title, p.brand, p.slug, p.image_url,
                         p.lowest_price, p.highest_price, p.storage, p.ram
         FROM products p
-        WHERE {where_sql}
+        WHERE {PRICED_PRODUCT_SQL} AND ({where_sql})
         ORDER BY
             CASE WHEN p.title LIKE ? THEN 0 ELSE 1 END,
             p.view_count DESC,
@@ -452,14 +477,16 @@ def search_suggestions():
     like_q = f"%{q}%"
     squashed = q.replace(" ", "").replace("-", "")
 
-    results = conn.execute("""
-        SELECT id, title, brand, slug, image_url, lowest_price, storage
-        FROM products
-        WHERE title LIKE ? OR brand LIKE ? OR match_key LIKE ?
-           OR REPLACE(REPLACE(title, " ", ""), "-", "") LIKE ?
+    results = conn.execute(f"""
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price, p.storage
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL} AND (
+            p.title LIKE ? OR p.brand LIKE ? OR p.match_key LIKE ?
+            OR REPLACE(REPLACE(p.title, " ", ""), "-", "") LIKE ?
+        )
         ORDER BY
-            CASE WHEN title LIKE ? THEN 0 ELSE 1 END,
-            view_count DESC
+            CASE WHEN p.title LIKE ? THEN 0 ELSE 1 END,
+            p.view_count DESC
         LIMIT 8
     """, (like_q, like_q, like_q, f"%{squashed}%", f"{q}%")).fetchall()
     results = enrich_products_with_images([dict(r) for r in results])
@@ -560,7 +587,7 @@ def refresh_price(product_id):
         FROM offers o
         JOIN retailers r ON o.retailer_id = r.id
         WHERE o.product_id = ?
-        ORDER BY o.price ASC
+        ORDER BY o.in_stock DESC, o.price ASC
     """, (product_id,)).fetchall()
 
     conn.close()
@@ -574,7 +601,7 @@ def _update_product_prices(conn, product_id):
     row = conn.execute("""
         SELECT MIN(price) AS low, MAX(price) AS high
         FROM offers
-        WHERE product_id = ? AND in_stock = 1
+        WHERE product_id = ? AND in_stock = 1 AND price > 0
     """, (product_id,)).fetchone()
     if row:
         conn.execute("""

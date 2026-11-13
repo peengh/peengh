@@ -27,11 +27,7 @@
       <div class="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
         <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
           <div class="w-full sm:w-56 md:w-64 flex-shrink-0 aspect-square bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden mx-auto sm:mx-0">
-            {% if product.image_url %}
-            <img src="{{ product.image_url }}" alt="{{ product.title }}" class="w-full h-full object-contain">
-            {% else %}
-            <div class="skeleton w-full h-full rounded-xl"></div>
-            {% endif %}
+            <img src="{{ product.image_url or product_placeholder }}" alt="{{ product.title }}" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
           </div>
           <div class="flex-1 text-center sm:text-left">
             <h1 class="text-lg sm:text-2xl font-bold text-peengh-navy leading-tight mb-2">{{ product.title }}</h1>
@@ -49,10 +45,11 @@
 
             <!-- Lowest Price Box -->
             <div class="bg-peengh-teal/10 rounded-xl p-4 inline-block sm:block">
+              {% if product.lowest_price %}
               <p class="text-xs text-gray-500 mb-1">Lowest Price</p>
               <div class="flex items-baseline gap-2 justify-center sm:justify-start">
                 <span class="text-2xl sm:text-3xl font-extrabold text-peengh-teal">
-                  Rs {{ "{:,}".format(product.lowest_price) if product.lowest_price else "N/A" }}
+                  Rs {{ "{:,}".format(product.lowest_price) }}
                 </span>
                 {% if product.highest_price and product.highest_price > product.lowest_price %}
                 <span class="text-sm text-gray-400 line-through">Rs {{ "{:,}".format(product.highest_price) }}</span>
@@ -62,6 +59,10 @@
               <p class="text-xs text-peengh-terra font-semibold mt-1">
                 Save up to Rs {{ "{:,}".format(product.highest_price - product.lowest_price) }}
               </p>
+              {% endif %}
+              {% else %}
+              <p class="text-sm font-semibold text-gray-600">No prices available</p>
+              <p class="text-xs text-gray-500 mt-1">This model has not been matched to a current store offer yet.</p>
               {% endif %}
             </div>
           </div>
@@ -148,11 +149,7 @@
           {% for s in similar %}
           <a href="/mobiles/{{ s.slug }}" class="bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-amber transition tap-target">
             <div class="aspect-square bg-gray-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-              {% if s.image_url %}
-              <img src="{{ s.image_url }}" alt="{{ s.title }}" loading="lazy" class="w-full h-full object-contain">
-              {% else %}
-              <div class="skeleton w-full h-full rounded-lg"></div>
-              {% endif %}
+              <img src="{{ s.image_url or product_placeholder }}" alt="{{ s.title }}" loading="lazy" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
             </div>
             <h3 class="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{{ s.title }}</h3>
             <p class="text-xs font-bold text-peengh-teal mt-1">Rs {{ "{:,}".format(s.lowest_price) if s.lowest_price else "N/A" }}</p>

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import DATABASE, get_db, init_db, seed_retailers, seed_official_images, slugify
 from scrapers.utils import parse_ram, parse_storage
+from scrapers.feeds import configured_feeds, fetch_feed
 from scrapers.telex import scrape_category as scrape_telex
 from scrapers.mega import scrape_category as scrape_mega
 from scrapers.priceoye import crawl_mobiles as scrape_priceoye
@@ -76,7 +77,7 @@ def extract_brand(title):
     return parts[0] if parts else "Other"
 
 
-def extract_model_key(title, brand, storage=None):
+def extract_model_key(title, brand, storage=None, include_storage=True):
     text = re.sub(rf'\b{re.escape(brand)}\b', ' ', title, flags=re.I)
     text = re.sub(r'\d+\s*(GB|TB)\s*RAM', ' ', text, flags=re.I)
     text = re.sub(r'\d+\s*(GB|TB)', ' ', text, flags=re.I)
@@ -94,7 +95,7 @@ def extract_model_key(title, brand, storage=None):
         text = re.sub(rf'\b{color}\b', ' ', text, flags=re.I)
     text = re.sub(r'[^\w\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
-    capacity = storage or parse_storage(title)
+    capacity = (storage or parse_storage(title)) if include_storage else None
     key = f"{brand} {text}"
     if capacity:
         key = f"{key} {capacity}"
@@ -151,13 +152,26 @@ def validate_offers(items, store):
 def scrape_all_stores():
     offers = []
     successful_stores = set()
+    feeds = configured_feeds()
+    unknown_feeds = set(feeds) - set(RETAILER_SCRAPERS)
+    if unknown_feeds:
+        raise ValueError(f"Unknown store feed slugs: {', '.join(sorted(unknown_feeds))}")
+
     for store, (name, scraper) in RETAILER_SCRAPERS.items():
-        print(f"Scraping {name}...")
+        print(f"Updating {name}...")
         try:
-            items = scraper()
+            if store in feeds:
+                try:
+                    items = fetch_feed(feeds[store])
+                    print(f"  [{store}] Loaded {len(items)} products from direct feed")
+                except Exception as exc:
+                    print(f"  [{store}] Direct feed failed: {exc}; trying scraper")
+                    items = scraper()
+            else:
+                items = scraper()
             store_offers = validate_offers(items, store)
         except Exception as exc:
-            print(f"  [{store}] Scrape failed: {exc}")
+            print(f"  [{store}] Update failed: {exc}")
             continue
         if store_offers:
             successful_stores.add(store)
@@ -165,17 +179,36 @@ def scrape_all_stores():
         else:
             print(f"  [{store}] No valid products; existing offers will be preserved")
     if not successful_stores:
-        raise RuntimeError("All retailer scrapes failed; database was not changed")
+        raise RuntimeError("All retailer updates failed; database was not changed")
     return offers, successful_stores
 
 
 def group_offers(offers):
     groups = {}
+    model_variants = {}
+    without_storage = []
     for offer in offers:
         brand = extract_brand(offer["title"])
         key = extract_model_key(offer["title"], brand, offer.get("storage"))
+        base_key = extract_model_key(offer["title"], brand, include_storage=False)
         if not key or key == brand.upper() or len(key) < len(brand) + 3:
             continue
+        if offer.get("storage"):
+            groups.setdefault(key, []).append(offer)
+            model_variants.setdefault(base_key, set()).add(key)
+        else:
+            without_storage.append((base_key, key, offer))
+
+    for base_key, key, offer in without_storage:
+        candidates = model_variants.get(base_key, set())
+        curated_candidates = {
+            candidate for candidate in candidates
+            if any(item["store"] == "curated" for item in groups[candidate])
+        }
+        if len(curated_candidates) == 1:
+            key = next(iter(curated_candidates))
+        elif len(candidates) == 1:
+            key = next(iter(candidates))
         groups.setdefault(key, []).append(offer)
     return groups
 
@@ -191,7 +224,9 @@ def _product_id(cursor, key, title, brand, image, storage, ram, popularity, now)
             UPDATE products
             SET title = ?, brand = ?, image_url = CASE
                     WHEN image_url IS NULL OR image_url = '' THEN ? ELSE image_url END,
-                storage = ?, ram = ?, view_count = MAX(view_count, ?), updated_at = ?
+                storage = COALESCE(NULLIF(?, ''), storage),
+                ram = COALESCE(NULLIF(?, ''), ram),
+                view_count = MAX(view_count, ?), updated_at = ?
             WHERE id = ?
         """, (title, brand, image, storage, ram, popularity, now, product_id))
         return product_id
@@ -243,6 +278,7 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
             offer_id = excluded.offer_id,
             price = excluded.price
     """, (product_id, retailer_id, offer_id, offer["price"]))
+    return offer_id
 
 
 def _update_prices(cursor, product_id):
@@ -260,10 +296,11 @@ def _update_prices(cursor, product_id):
     """, (product_id, product_id, product_id))
 
 
-def apply_updates(groups, retailers):
+def apply_updates(groups, retailers, successful_stores):
     now = datetime.now(timezone.utc).isoformat()
     db = get_db()
     cursor = db.cursor()
+    active_offers = {store: set() for store in successful_stores}
     try:
         db.execute("BEGIN IMMEDIATE")
         for key, offers in groups.items():
@@ -271,8 +308,14 @@ def apply_updates(groups, retailers):
             title = best_offer["title"]
             brand = extract_brand(title)
             image = next((item["image"] for item in offers if item.get("image")), "")
-            storage = next((item.get("storage") for item in offers if item.get("storage")), "")
-            ram = next((item.get("ram") for item in offers if item.get("ram")), "")
+            storage = next((
+                item.get("storage") for item in offers
+                if item["store"] == "curated" and item.get("storage")
+            ), "") or next((item.get("storage") for item in offers if item.get("storage")), "")
+            ram = next((
+                item.get("ram") for item in offers
+                if item["store"] == "curated" and item.get("ram")
+            ), "") or next((item.get("ram") for item in offers if item.get("ram")), "")
             popularity = max(item.get("popularity", 0) for item in offers)
             product_id = _product_id(
                 cursor, key, title, brand, image, storage, ram, popularity, now,
@@ -286,8 +329,37 @@ def apply_updates(groups, retailers):
                 seen_stores.add(store)
                 retailer_id = retailers.get(store)
                 if retailer_id:
-                    _upsert_offer(cursor, product_id, retailer_id, offer, now)
+                    offer_id = _upsert_offer(cursor, product_id, retailer_id, offer, now)
+                    if store in active_offers:
+                        active_offers[store].add(offer_id)
             _update_prices(cursor, product_id)
+
+        for store, active_ids in active_offers.items():
+            retailer_id = retailers.get(store)
+            if not retailer_id:
+                continue
+            if active_ids:
+                placeholders = ",".join("?" for _ in active_ids)
+                stale_offers = cursor.execute(f"""
+                    SELECT id, product_id FROM offers
+                    WHERE retailer_id = ? AND id NOT IN ({placeholders})
+                """, (retailer_id, *active_ids)).fetchall()
+            else:
+                stale_offers = cursor.execute(
+                    "SELECT id, product_id FROM offers WHERE retailer_id = ?",
+                    (retailer_id,),
+                ).fetchall()
+            if not stale_offers:
+                continue
+            stale_ids = [row["id"] for row in stale_offers]
+            placeholders = ",".join("?" for _ in stale_ids)
+            cursor.execute(f"""
+                UPDATE price_history SET offer_id = NULL
+                WHERE offer_id IN ({placeholders})
+            """, stale_ids)
+            cursor.execute(f"DELETE FROM offers WHERE id IN ({placeholders})", stale_ids)
+            for product_id in {row["product_id"] for row in stale_offers}:
+                _update_prices(cursor, product_id)
         db.commit()
     except Exception:
         db.rollback()
@@ -320,7 +392,7 @@ def rebuild_database():
         for row in db.execute("SELECT id, slug FROM retailers").fetchall()
     }
     db.close()
-    counts = apply_updates(groups, retailers)
+    counts = apply_updates(groups, retailers, successful_stores)
 
     print("\n" + "=" * 50)
     print("DATABASE UPDATE COMPLETE")

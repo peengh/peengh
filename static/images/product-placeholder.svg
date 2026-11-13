@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="title description">
+  <title id="title">Product image unavailable</title>
+  <desc id="description">A mobile phone outline used when a product image cannot be loaded.</desc>
+  <rect width="600" height="600" fill="#f8fafc"/>
+  <rect x="205" y="105" width="190" height="360" rx="30" fill="#ffffff" stroke="#cbd5e1" stroke-width="10"/>
+  <rect x="225" y="145" width="150" height="245" rx="8" fill="#eef2f6"/>
+  <rect x="265" y="122" width="70" height="8" rx="4" fill="#cbd5e1"/>
+  <circle cx="300" cy="425" r="14" fill="#e2e8f0"/>
+  <path d="M275 275v-30a25 25 0 0 1 50 0v30m-62 0h74v70h-74z" fill="none" stroke="#94a3b8" stroke-width="8" stroke-linejoin="round"/>
+  <text x="300" y="510" text-anchor="middle" fill="#64748b" font-family="Arial, sans-serif" font-size="24">Image unavailable</text>
+</svg>

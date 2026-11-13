@@ -187,7 +187,7 @@ def flag_stale_images():
         UPDATE product_images
         SET is_active = 0
         WHERE is_active = 1
-          AND source IN ('telex', 'mega', 'retailer')
+          AND source IN ('telex', 'mega', 'priceoye', 'shophive', 'homeshopping', 'retailer')
           AND last_seen_at < datetime('now', '-45 days')
     """)
     count = cursor.rowcount

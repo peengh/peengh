@@ -146,15 +146,14 @@ def _extract_products_from_soup(soup):
             elif image.startswith("/"):
                 image = BASE_URL + image
 
-        card_text = card.get_text(" ", strip=True)
         brand = _extract_brand(title)
         result = {
             "title": title,
             "price": price,
             "url": product_url,
             "image": image,
-            "storage": parse_storage(title) or parse_storage(card_text),
-            "ram": parse_ram(title) or parse_ram(card_text),
+            "storage": parse_storage(title),
+            "ram": parse_ram(title),
             "in_stock": True,
         }
         results.append(result)

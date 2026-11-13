@@ -93,11 +93,7 @@
     {% for p in trending %}
     <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-amber transition group tap-target">
       <div class="aspect-square bg-gray-50 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
-        {% if p.image_url %}
-        <img src="{{ p.image_url }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300">
-        {% else %}
-        <div class="skeleton w-full h-full rounded-lg"></div>
-        {% endif %}
+        <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
       </div>
       <h3 class="text-xs sm:text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">{{ p.title }}</h3>
       <div class="flex items-baseline gap-1.5">
@@ -126,11 +122,7 @@
     {% for p in price_drops %}
     <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-terra transition flex gap-3 tap-target">
       <div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
-        {% if p.image_url %}
-        <img src="{{ p.image_url }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain">
-        {% else %}
-        <div class="skeleton w-full h-full rounded-lg"></div>
-        {% endif %}
+        <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
       </div>
       <div class="flex-1 min-w-0">
         <h3 class="text-sm font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">{{ p.title }}</h3>

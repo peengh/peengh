@@ -1,7 +1,7 @@
 """
 seed_curated.py — Curated baseline of top mobile phones in Pakistan.
 Includes current (2025) and upcoming (2026) flagships.
-These phones ALWAYS appear on Peengh, even when scrapers fail.
+These phones are retained for offer matching and appear publicly when priced.
 """
 import re
 from database import get_db

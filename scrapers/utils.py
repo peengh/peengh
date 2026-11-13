@@ -162,21 +162,30 @@ def parse_storage(title):
     ]
     if not matches:
         return None
-    match = matches[-1] if len(matches) > 1 else matches[0]
+    match = max(
+        matches,
+        key=lambda item: int(item.group(1)) * (1024 if item.group(2).upper() == "TB" else 1),
+    )
     return f"{int(match.group(1))}{match.group(2).upper()}"
 
 
 def parse_ram(title):
-    """Extract RAM from labelled memory or a RAM/storage capacity pair."""
+    """Extract plausible RAM without treating storage-only capacities as memory."""
     match = re.search(r'(\d+)\s*(GB|TB)\s*RAM\b', title or "", re.IGNORECASE)
     if not match:
         match = re.search(r'\bRAM\s*:?\s*(\d+)\s*(GB|TB)\b', title or "", re.IGNORECASE)
     if match:
-        return f"{int(match.group(1))}{match.group(2).upper()}"
+        value = int(match.group(1))
+        unit = match.group(2).upper()
+        return f"{value}{unit}" if unit == "GB" and 1 <= value <= 48 else None
+
     matches = _capacities(title)
     if len(matches) > 1:
-        match = matches[0]
-        return f"{int(match.group(1))}{match.group(2).upper()}"
+        for capacity in matches[:2]:
+            value = int(capacity.group(1))
+            unit = capacity.group(2).upper()
+            if unit == "GB" and 1 <= value <= 48:
+                return f"{value}{unit}"
     return None
 
 

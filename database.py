@@ -200,6 +200,13 @@ def init_db():
         print("  [DB] Added offer_id column to price_history table")
 
     cursor.execute("""
+        UPDATE products SET ram = ''
+        WHERE ram IS NOT NULL AND (
+            UPPER(ram) LIKE '%TB'
+            OR (UPPER(ram) LIKE '%GB' AND CAST(REPLACE(UPPER(ram), 'GB', '') AS INTEGER) > 48)
+        )
+    """)
+    cursor.execute("""
         DELETE FROM product_images
         WHERE id NOT IN (
             SELECT MIN(id)
@@ -255,64 +262,24 @@ def seed_official_images():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Curated official images (manufacturer or verified retailer sources)
+    # Only URLs verified to return an image belong in this list.
     # Format: (brand, model_key, color, storage_variant, image_url, source, confidence_score)
     official_images = [
-        # Samsung
         ("Samsung", "S24 ULTRA", "Titanium Gray", "256GB",
          "https://images.samsung.com/pk/smartphones/galaxy-s24-ultra/images/galaxy-s24-ultra-highlights-color-titanium-gray-back-mo.jpg",
          "samsung_official", 95),
         ("Samsung", "S24 ULTRA", "Titanium Black", "256GB",
          "https://images.samsung.com/pk/smartphones/galaxy-s24-ultra/images/galaxy-s24-ultra-highlights-color-titanium-black-back-mo.jpg",
          "samsung_official", 95),
-        ("Samsung", "S24", "Phantom Black", "128GB",
-         "https://images.samsung.com/pk/smartphones/galaxy-s24/images/galaxy-s24-highlights-color-black-back-mo.jpg",
-         "samsung_official", 95),
-        ("Samsung", "S24", "Cobalt Violet", "128GB",
-         "https://images.samsung.com/pk/smartphones/galaxy-s24/images/galaxy-s24-highlights-color-violet-back-mo.jpg",
-         "samsung_official", 95),
-        ("Samsung", "A55", "Awesome Navy", "256GB",
-         "https://images.samsung.com/pk/smartphones/galaxy-a55/images/galaxy-a55-highlights-color-back-mo.jpg",
-         "samsung_official", 90),
-
-        # Apple
-        ("Apple", "IPHONE 15 PRO MAX", "Natural Titanium", "256GB",
-         "https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-pro-finish-select-202309-6-7inch-naturaltitanium?wid=5120&hei=2880&fmt=webp&qlt=70&.v=1692895703312",
-         "apple_official", 95),
-        ("Apple", "IPHONE 15 PRO MAX", "Blue Titanium", "256GB",
-         "https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-pro-finish-select-202309-6-7inch-bluetitanium?wid=5120&hei=2880&fmt=webp&qlt=70&.v=1692895703312",
-         "apple_official", 95),
-        ("Apple", "IPHONE 15", "Blue", "128GB",
-         "https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-finish-select-202309-6-1inch-blue?wid=5120&hei=2880&fmt=webp&qlt=70&.v=1692923780362",
-         "apple_official", 95),
-        ("Apple", "IPHONE 15", "Pink", "128GB",
-         "https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-finish-select-202309-6-1inch-pink?wid=5120&hei=2880&fmt=webp&qlt=70&.v=1692923780379",
-         "apple_official", 95),
-
-        # Xiaomi
-        ("Xiaomi", "REDMI NOTE 13 PRO", "Midnight Black", "256GB",
-         "https://i02.appmifile.com/313_operator_sg/13/01/2024/223d7e60a3327c5b3a7dc5f62b590c49.png",
-         "xiaomi_official", 90),
-        ("Xiaomi", "REDMI NOTE 13", "Graphite Black", "128GB",
-         "https://i02.appmifile.com/84_operator_sg/13/01/2024/5a8f9c3e7d2b1a4f6c8e0d2b4a6f8c0e.png",
-         "xiaomi_official", 90),
-
-        # Infinix
-        ("Infinix", "NOTE 40 PRO", "Vintage Green", "256GB",
-         "https://www.infinixmobility.com/fileadmin/assets/images/product/note40-pro/note40-pro-green.png",
-         "infinix_official", 85),
-
-        # Tecno
-        ("Tecno", "CAMON 30 PREMIER", "Silver", "512GB",
-         "https://www.tecno-mobile.com/fileadmin/tecno/products/camon-30-premier/silver.png",
-         "tecno_official", 85),
-
-        # Realme
-        ("Realme", "12 PRO PLUS", "Navigator Beige", "256GB",
-         "https://image01.realme.net/general/20240125/1706174400000.png",
-         "realme_official", 85),
     ]
 
+    cursor.execute("""
+        UPDATE product_images SET is_active = 0
+        WHERE source IN (
+            'samsung_official', 'apple_official', 'xiaomi_official',
+            'infinix_official', 'tecno_official', 'realme_official'
+        )
+    """)
     for brand, model_key, color, storage, url, source, confidence in official_images:
         cursor.execute("""
             INSERT INTO product_images
