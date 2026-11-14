@@ -207,6 +207,30 @@ def init_db():
         )
     """)
     cursor.execute("""
+        UPDATE product_images SET is_active = 0
+        WHERE LOWER(image_url) LIKE '%out-of-stock%'
+           OR LOWER(image_url) LIKE '%out_of_stock%'
+           OR LOWER(image_url) LIKE '%outofstock%'
+           OR LOWER(image_url) LIKE '%sold-out%'
+           OR LOWER(image_url) LIKE '%sold_out%'
+           OR LOWER(image_url) LIKE '%soldout%'
+           OR LOWER(image_url) LIKE '%no-image%'
+           OR LOWER(image_url) LIKE '%no_image%'
+           OR LOWER(image_url) LIKE '%image-unavailable%'
+    """)
+    cursor.execute("""
+        UPDATE products SET image_url = ''
+        WHERE LOWER(image_url) LIKE '%out-of-stock%'
+           OR LOWER(image_url) LIKE '%out_of_stock%'
+           OR LOWER(image_url) LIKE '%outofstock%'
+           OR LOWER(image_url) LIKE '%sold-out%'
+           OR LOWER(image_url) LIKE '%sold_out%'
+           OR LOWER(image_url) LIKE '%soldout%'
+           OR LOWER(image_url) LIKE '%no-image%'
+           OR LOWER(image_url) LIKE '%no_image%'
+           OR LOWER(image_url) LIKE '%image-unavailable%'
+    """)
+    cursor.execute("""
         DELETE FROM product_images
         WHERE id NOT IN (
             SELECT MIN(id)

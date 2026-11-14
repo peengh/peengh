@@ -4,7 +4,22 @@ Matches products to the best available image from the curated database.
 Provides guardrails for accuracy, freshness, and source verification.
 """
 import re
+from urllib.parse import unquote
 from database import get_db
+
+NON_PRODUCT_IMAGE_MARKERS = (
+    "out-of-stock", "out_of_stock", "outofstock",
+    "sold-out", "sold_out", "soldout",
+    "no-image", "no_image", "image-unavailable",
+)
+
+
+def is_usable_product_image(image_url):
+    if not image_url:
+        return False
+    normalized = unquote(str(image_url)).lower()
+    return not any(marker in normalized for marker in NON_PRODUCT_IMAGE_MARKERS)
+
 
 # Color vocabulary for extraction
 COLOR_NAMES = [
@@ -64,7 +79,7 @@ def save_scraped_image(brand, title, image_url, source, source_url=""):
     """Save an image extracted from a retailer scrape into the image database.
     Returns the image_id or None.
     """
-    if not image_url or not brand or not title:
+    if not is_usable_product_image(image_url) or not brand or not title:
         return None
 
     from scrapers.utils import parse_storage
@@ -154,7 +169,7 @@ def resolve_image(product_title, product_brand, preferred_storage=None):
     seen_urls = set()
     for row in rows:
         url = row["image_url"]
-        if url and url not in seen_urls:
+        if is_usable_product_image(url) and url not in seen_urls:
             seen_urls.add(url)
             unique_rows.append(dict(row))
     if not unique_rows:

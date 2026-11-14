@@ -10,7 +10,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, g
 
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import human_time_ago, parse_timestamp
-from image_resolver import resolve_image, save_scraped_image
+from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
 import config
 
 app = Flask(__name__)
@@ -47,6 +47,9 @@ def enrich_products_with_images(products):
     """Resolve all exact-model images so templates can retry failed sources."""
     for p in products:
         stored_image = p.get("image_url") or ""
+        if not is_usable_product_image(stored_image):
+            stored_image = ""
+            p["image_url"] = ""
         resolved = resolve_image(p["title"], p["brand"], p.get("storage"))
         fallbacks = []
         if resolved and resolved.get("image_url"):
