@@ -129,7 +129,7 @@ rm ~/Library/LaunchAgents/com.peengh.dailyscrape.plist
 
 ### OPTION B: GitHub Actions
 
-The repository has one scheduled workflow, **Daily Price Scrape**, which runs at 11 AM Pakistan time.
+The repository has one scheduled workflow, **Daily Price Scrape**, which is scheduled for 12 PM Pakistan time. GitHub can delay scheduled runs during busy periods.
 
 1. Go to your repository's **Actions** tab.
 2. Click **"Daily Price Scrape"**.

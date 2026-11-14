@@ -13,7 +13,7 @@
 | **Hosting** | Render.com Standard Plan ($7/month) | Runs your Flask app 24/7 |
 | **Database** | SQLite (`peengh.db`) committed to GitHub | No separate DB server needed |
 | **Domain** | Cloudflare (Free) | DNS + SSL for `peengh.com` |
-| **CI/CD** | GitHub Actions (Free) | Daily price scraping at 11 AM PKT |
+| **CI/CD** | GitHub Actions (Free) | Daily price scraping at 12 PM PKT |
 | **Code** | GitHub (Free) | Repository storage |
 
 **Total monthly cost: $7**
@@ -190,7 +190,7 @@ In Cloudflare:
 
 ## Step 4: Daily Price Updates via GitHub Actions (10 minutes)
 
-Prices update automatically every day at **11 AM Pakistan time**.
+Prices update automatically every day at **12 PM Pakistan time**.
 
 ### 4.1 Enable write permissions
 
@@ -200,11 +200,11 @@ Prices update automatically every day at **11 AM Pakistan time**.
 
 ### 4.2 How it works
 
-1. GitHub Actions runs at 6 AM UTC (11 AM PKT) daily
+1. GitHub Actions is scheduled for 7 AM UTC (12 PM PKT) daily; GitHub can delay scheduled jobs during busy periods
 2. Scrapes TeleX, Mega.pk, PriceOye, Shophive, and HomeShopping for latest prices
 3. Atomically updates `peengh.db` without deleting existing products or price history
-4. Commits the DB back to GitHub
-5. Render auto-deploys the updated DB within 2-3 minutes
+4. Rebases onto any newer GitHub commit, then commits and pushes the updated DB
+5. Render auto-deploys the updated DB when **Settings → Build & Deploy → Auto-Deploy** is enabled for the `main` branch
 
 ### 4.3 Test manually
 

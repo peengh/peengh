@@ -6,7 +6,7 @@ import json
 import re
 from bs4 import BeautifulSoup
 from .utils import rate_limited_request, parse_storage, parse_ram, parse_price
-from image_resolver import save_scraped_image
+from image_resolver import is_usable_product_image, save_scraped_image
 
 BASE_URL = "https://priceoye.pk"
 
@@ -304,6 +304,12 @@ def _extract_products_from_soup(soup):
                 elif image.startswith("/"):
                     image = BASE_URL + image
                 image = re.sub(r"-100x100(?=\.[a-z]+$)", "-500x500", image, flags=re.I)
+
+            if not is_usable_product_image(image) and product_url:
+                details = check_price(product_url)
+                detail_image = details.get("image_url", "")
+                if is_usable_product_image(detail_image):
+                    image = detail_image
 
             brand = _extract_brand(title)
             results.append({"title": title, "price": price, "url": product_url,
