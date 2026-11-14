@@ -42,6 +42,26 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/peengh.css') }}">
+  <script>
+    function handleProductImageError(image) {
+      var fallbacks = [];
+      try {
+        fallbacks = JSON.parse(image.dataset.fallbacks || '[]');
+      } catch (error) {
+        fallbacks = [];
+      }
+      var next = fallbacks.shift();
+      image.dataset.fallbacks = JSON.stringify(fallbacks);
+      if (next && next !== image.src) {
+        image.src = next;
+      } else if (next) {
+        handleProductImageError(image);
+      } else {
+        image.onerror = null;
+        image.src = image.dataset.placeholder;
+      }
+    }
+  </script>
 
   <style>
     /* Brand edge colors */

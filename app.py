@@ -44,16 +44,19 @@ def get_db_conn():
 
 
 def enrich_products_with_images(products):
-    """Resolve the best image for each product from the curated image database.
-    Falls back to the product's stored image_url if no match found.
-    """
+    """Resolve all exact-model images so templates can retry failed sources."""
     for p in products:
+        stored_image = p.get("image_url") or ""
         resolved = resolve_image(p["title"], p["brand"], p.get("storage"))
+        fallbacks = []
         if resolved and resolved.get("image_url"):
             p["image_url"] = resolved["image_url"]
             p["image_source"] = resolved.get("source", "")
             p["image_verified"] = resolved.get("is_verified", 0)
-        # else keep existing p["image_url"]
+            fallbacks = resolved.get("fallback_urls", [])
+        if stored_image and stored_image != p.get("image_url") and stored_image not in fallbacks:
+            fallbacks.append(stored_image)
+        p["image_fallbacks"] = fallbacks
     return products
 
 
@@ -293,10 +296,7 @@ def product(slug):
         ORDER BY ph.date ASC
     """, (product["id"],)).fetchall()
 
-    # Resolve best image for this product
-    resolved = resolve_image(product["title"], product["brand"], product.get("storage"))
-    if resolved and resolved.get("image_url"):
-        product["image_url"] = resolved["image_url"]
+    product = enrich_products_with_images([product])[0]
 
     # Similar phones — same brand, different model, closest price
     similar = conn.execute(f"""

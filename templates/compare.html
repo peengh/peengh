@@ -17,7 +17,7 @@
     {% for p in products %}
     <div class="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
       <div class="aspect-square bg-gray-50 rounded-xl mb-4 flex items-center justify-center overflow-hidden">
-        <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
+        <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" class="w-full h-full object-contain" data-fallbacks="{{ p.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
       </div>
       <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-1">{{ p.title }}</h2>
       <p class="text-sm text-gray-500 mb-3">{{ p.brand }}</p>

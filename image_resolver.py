@@ -48,6 +48,7 @@ def extract_model_key(title, brand):
     # Remove storage/RAM
     t = re.sub(r'\d+\s*(GB|TB)\s*RAM?', '', t, flags=re.I)
     t = re.sub(r'\d+\s*(GB|TB)', '', t, flags=re.I)
+    t = re.sub(r'\b(STORAGE|RAM)\b', '', t)
     # Remove color words
     for color in COLOR_NAMES:
         t = re.sub(rf'\b{color.upper()}\b', '', t)
@@ -113,7 +114,7 @@ def save_scraped_image(brand, title, image_url, source, source_url=""):
 
 
 def resolve_image(product_title, product_brand, preferred_storage=None):
-    """Find a current brand/model image without substituting another color."""
+    """Find current brand/model images without substituting another color."""
     if not product_title or not product_brand:
         return None
 
@@ -126,13 +127,13 @@ def resolve_image(product_title, product_brand, preferred_storage=None):
     storage_upper = preferred_storage.upper() if preferred_storage else None
     conn = get_db()
     try:
-        row = conn.execute("""
+        rows = conn.execute("""
             SELECT image_url, confidence_score, source, is_verified
             FROM product_images
             WHERE UPPER(brand) = ? AND is_active = 1
               AND (expires_at IS NULL OR expires_at > datetime('now'))
               AND confidence_score > 40
-              AND (UPPER(model_key) LIKE ? OR ? LIKE '%' || UPPER(model_key) || '%')
+              AND (UPPER(model_key) = ? OR UPPER(model_key) = ? || ' STORAGE')
               AND (
                   ? IS NULL OR color IS NULL OR color = '' OR UPPER(color) = ?
               )
@@ -142,14 +143,25 @@ def resolve_image(product_title, product_brand, preferred_storage=None):
               )
             ORDER BY is_verified DESC, confidence_score DESC,
                      last_seen_at DESC, updated_at DESC
-            LIMIT 1
         """, (
-            product_brand.upper(), f"%{model_key}%", model_key,
+            product_brand.upper(), model_key, model_key,
             color_upper, color_upper, storage_upper, storage_upper,
-        )).fetchone()
-        return dict(row) if row else None
+        )).fetchall()
     finally:
         conn.close()
+
+    unique_rows = []
+    seen_urls = set()
+    for row in rows:
+        url = row["image_url"]
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_rows.append(dict(row))
+    if not unique_rows:
+        return None
+    result = unique_rows[0]
+    result["fallback_urls"] = [row["image_url"] for row in unique_rows[1:]]
+    return result
 
 
 def get_image_stats():

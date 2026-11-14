@@ -27,7 +27,7 @@
       <div class="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
         <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
           <div class="w-full sm:w-56 md:w-64 flex-shrink-0 aspect-square bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden mx-auto sm:mx-0">
-            <img src="{{ product.image_url or product_placeholder }}" alt="{{ product.title }}" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
+            <img src="{{ product.image_url or product_placeholder }}" alt="{{ product.title }}" class="w-full h-full object-contain" data-fallbacks="{{ product.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
           </div>
           <div class="flex-1 text-center sm:text-left">
             <h1 class="text-lg sm:text-2xl font-bold text-peengh-navy leading-tight mb-2">{{ product.title }}</h1>
@@ -149,7 +149,7 @@
           {% for s in similar %}
           <a href="/mobiles/{{ s.slug }}" class="bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-amber transition tap-target">
             <div class="aspect-square bg-gray-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-              <img src="{{ s.image_url or product_placeholder }}" alt="{{ s.title }}" loading="lazy" class="w-full h-full object-contain" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
+              <img src="{{ s.image_url or product_placeholder }}" alt="{{ s.title }}" loading="lazy" class="w-full h-full object-contain" data-fallbacks="{{ s.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
             </div>
             <h3 class="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{{ s.title }}</h3>
             <p class="text-xs font-bold text-peengh-teal mt-1">Rs {{ "{:,}".format(s.lowest_price) if s.lowest_price else "N/A" }}</p>

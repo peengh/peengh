@@ -109,7 +109,7 @@
         {% for p in products %}
         <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-amber transition group tap-target">
           <div class="aspect-square bg-gray-50 rounded-lg mb-2.5 flex items-center justify-center overflow-hidden">
-            <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" onerror="this.onerror=null;this.src='{{ product_placeholder }}'">
+            <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" data-fallbacks="{{ p.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
           </div>
           <h3 class="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight mb-1">{{ p.title }}</h3>
           <div class="flex items-baseline gap-1">
