@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import DATABASE, get_db, init_db, seed_retailers, seed_official_images, slugify
-from scrapers.utils import parse_ram, parse_storage
+from scrapers.utils import classify_pta_status, parse_ram, parse_storage
 from scrapers.feeds import configured_feeds, fetch_feed
 from scrapers.telex import scrape_category as scrape_telex
 from scrapers.mega import scrape_category as scrape_mega
@@ -252,22 +252,22 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
     """, (product_id, retailer_id)).fetchone()
     values = (
         offer["title"], offer["price"], offer["url"],
-        offer.get("in_stock", True), now, now,
+        offer.get("in_stock", True), classify_pta_status(offer["title"]), now, now,
     )
     if existing:
         offer_id = existing["id"]
         cursor.execute("""
             UPDATE offers
-            SET title = ?, price = ?, url = ?, in_stock = ?,
+            SET title = ?, price = ?, url = ?, in_stock = ?, pta_status = ?,
                 scraped_at = ?, last_checked = ?
             WHERE id = ?
         """, values + (offer_id,))
     else:
         cursor.execute("""
             INSERT INTO offers
-                (product_id, retailer_id, title, price, url, in_stock,
+                (product_id, retailer_id, title, price, url, in_stock, pta_status,
                  scraped_at, last_checked)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (product_id, retailer_id) + values)
         offer_id = cursor.lastrowid
 

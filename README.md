@@ -64,6 +64,28 @@ Scrapers run daily via GitHub Actions and commit the updated `peengh.db` back to
 python3 daily_update.py
 ```
 
+### Cached specifications and PTA status
+
+`specs_update.py` imports specifications from exact retailer product URLs, validates the model and variant, and caches the results in `peengh.db`. It commits after each product, skips fresh cache entries, and retries failed products after one day. It is separate from the daily price workflow.
+
+```bash
+# Check one product without saving
+python3 specs_update.py --product samsung-galaxy-s25-ultra --force --dry-run
+
+# Backfill a small batch, then resume with another run
+python3 specs_update.py --limit 25
+
+# Backfill every eligible product
+python3 specs_update.py --limit 0
+
+# Retry only unresolved products, reusing exact-model cached variants first
+python3 specs_update.py --retry-errors
+```
+
+Use Python 3.11. On GitHub, open **Actions → Specification Backfill → Run workflow**. Use the default `25` for a small run or `0` for all eligible products. The workflow commits the updated database and shares its concurrency group with the daily price update.
+
+PTA status is stored per retailer offer. Only explicit title wording produces `approved` or `non_pta`; unspecified listings remain `unknown`. Registration charges are not inferred.
+
 ### Direct retailer feeds
 
 A retailer-supplied JSON or CSV feed can replace scraping for any configured store. Set `STORE_FEEDS` to a JSON object keyed by `telex`, `mega`, `priceoye`, `shophive`, or `homeshopping`. For example:

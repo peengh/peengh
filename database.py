@@ -52,6 +52,12 @@ def init_db():
             display TEXT,
             battery TEXT,
             camera TEXT,
+            specs_json TEXT,
+            specs_source TEXT,
+            specs_source_url TEXT,
+            specs_updated_at TIMESTAMP,
+            specs_status TEXT DEFAULT 'missing',
+            specs_error TEXT,
             lowest_price INTEGER,
             highest_price INTEGER,
             view_count INTEGER DEFAULT 0,
@@ -70,6 +76,7 @@ def init_db():
             price INTEGER NOT NULL,
             url TEXT NOT NULL,
             in_stock INTEGER DEFAULT 1,
+            pta_status TEXT DEFAULT 'unknown',
             scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
@@ -198,6 +205,37 @@ def init_db():
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE price_history ADD COLUMN offer_id INTEGER REFERENCES offers(id)")
         print("  [DB] Added offer_id column to price_history table")
+
+    spec_columns = {
+        "specs_json": "TEXT",
+        "specs_source": "TEXT",
+        "specs_source_url": "TEXT",
+        "specs_updated_at": "TIMESTAMP",
+        "specs_status": "TEXT DEFAULT 'missing'",
+        "specs_error": "TEXT",
+    }
+    existing_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(products)").fetchall()
+    }
+    for name, definition in spec_columns.items():
+        if name not in existing_columns:
+            cursor.execute(f"ALTER TABLE products ADD COLUMN {name} {definition}")
+            print(f"  [DB] Added {name} column to products table")
+
+    offer_columns = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(offers)").fetchall()
+    }
+    if "pta_status" not in offer_columns:
+        cursor.execute("ALTER TABLE offers ADD COLUMN pta_status TEXT DEFAULT 'unknown'")
+        print("  [DB] Added pta_status column to offers table")
+    cursor.execute("""
+        UPDATE offers SET pta_status = CASE
+            WHEN REPLACE(UPPER(title), '-', ' ') LIKE '%NON PTA%'
+              OR UPPER(title) LIKE '%NONPTA%' THEN 'non_pta'
+            WHEN REPLACE(UPPER(title), '-', ' ') LIKE '%PTA APPROVED%' THEN 'approved'
+            ELSE 'unknown'
+        END
+    """)
 
     cursor.execute("""
         UPDATE products SET ram = ''

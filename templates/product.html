@@ -108,41 +108,7 @@
       {% endif %}
 
       <!-- Full Specs -->
-      <div class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
-        <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-4">Specifications</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {% if product.ram %}
-          <div class="flex justify-between py-2 border-b border-gray-50">
-            <span class="text-sm text-gray-500">RAM</span>
-            <span class="text-sm font-medium text-gray-800">{{ product.ram }}</span>
-          </div>
-          {% endif %}
-          {% if product.storage %}
-          <div class="flex justify-between py-2 border-b border-gray-50">
-            <span class="text-sm text-gray-500">Storage</span>
-            <span class="text-sm font-medium text-gray-800">{{ product.storage }}</span>
-          </div>
-          {% endif %}
-          {% if product.display %}
-          <div class="flex justify-between py-2 border-b border-gray-50">
-            <span class="text-sm text-gray-500">Display</span>
-            <span class="text-sm font-medium text-gray-800">{{ product.display }}</span>
-          </div>
-          {% endif %}
-          {% if product.battery %}
-          <div class="flex justify-between py-2 border-b border-gray-50">
-            <span class="text-sm text-gray-500">Battery</span>
-            <span class="text-sm font-medium text-gray-800">{{ product.battery }}</span>
-          </div>
-          {% endif %}
-          {% if product.camera %}
-          <div class="flex justify-between py-2 border-b border-gray-50">
-            <span class="text-sm text-gray-500">Camera</span>
-            <span class="text-sm font-medium text-gray-800">{{ product.camera }}</span>
-          </div>
-          {% endif %}
-        </div>
-      </div>
+      {% include "partials/specifications.html" %}
 
       <!-- Similar Phones -->
       {% if similar %}

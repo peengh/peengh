@@ -10,7 +10,7 @@ from flask import Flask, Response, render_template, request, jsonify, redirect, 
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from database import get_db, init_db, seed_retailers, slugify
-from scrapers.utils import human_time_ago, parse_timestamp
+from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
 import config
 
@@ -34,6 +34,22 @@ def absolute_url(path=""):
     return f"{config.SITE_URL}/{str(path).lstrip('/')}"
 
 
+def load_product_specifications(product):
+    try:
+        stored = json.loads(product.get("specs_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    keys = ("display", "chipset", "ram", "storage", "camera", "battery", "charging")
+    specs = {key: str(stored[key]) for key in keys if stored.get(key)}
+    if product.get("ram"):
+        specs.setdefault("ram", product["ram"])
+    if product.get("storage"):
+        specs.setdefault("storage", product["storage"])
+    return specs
+
+
 def build_product_structured_data(product, offers):
     data = {
         "@context": "https://schema.org",
@@ -45,6 +61,16 @@ def build_product_structured_data(product, offers):
     }
     if product.get("image_url"):
         data["image"] = [absolute_url(product["image_url"])]
+    specifications = load_product_specifications(product)
+    if specifications:
+        data["additionalProperty"] = [
+            {
+                "@type": "PropertyValue",
+                "name": key.replace("_", " ").title(),
+                "value": value,
+            }
+            for key, value in specifications.items()
+        ]
 
     available_offers = [offer for offer in offers if offer["in_stock"] and offer["price"] > 0]
     if available_offers:
@@ -381,6 +407,7 @@ def product(slug):
         history_json=json.dumps(history_by_retailer),
         has_stale=has_stale,
         store_count=store_count,
+        specifications=load_product_specifications(product),
         structured_data=build_product_structured_data(product, offer_dicts),
     )
 
@@ -595,10 +622,12 @@ def refresh_price(product_id):
                 conn.execute("""
                     UPDATE offers
                     SET price = ?, in_stock = ?, last_checked = CURRENT_TIMESTAMP,
-                        title = COALESCE(?, title)
+                        title = COALESCE(?, title), pta_status = ?
                     WHERE id = ?
                 """, (result["price"], result.get("in_stock", True),
-                      result.get("title"), offer["id"]))
+                      result.get("title"),
+                      classify_pta_status(result.get("title") or offer["title"]),
+                      offer["id"]))
                 conn.execute("""
                     INSERT INTO price_history
                         (product_id, retailer_id, offer_id, price, date)

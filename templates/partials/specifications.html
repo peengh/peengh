@@ -1,0 +1,43 @@
+{% set current_offers = offers|selectattr('in_stock')|list %}
+{% set approved = current_offers|selectattr('pta_status', 'equalto', 'approved')|list %}
+{% set non_pta = current_offers|selectattr('pta_status', 'equalto', 'non_pta')|list %}
+{% set unknown = current_offers|selectattr('pta_status', 'equalto', 'unknown')|list %}
+<div class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
+  <div class="flex items-center justify-between gap-3 mb-4">
+    <h2 class="text-base sm:text-lg font-bold text-peengh-navy">Specifications</h2>
+    {% if product.specs_source_url %}
+    <a href="{{ product.specs_source_url }}" target="_blank" rel="noopener" class="text-[11px] text-peengh-teal hover:underline">Source: {{ product.specs_source }}</a>
+    {% endif %}
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+    {% for key, label in [
+      ('display', 'Display'), ('chipset', 'Chipset'), ('ram', 'RAM'),
+      ('storage', 'Storage'), ('camera', 'Camera'), ('battery', 'Battery'),
+      ('charging', 'Charging')
+    ] %}
+    {% if specifications.get(key) %}
+    <div class="py-2.5 border-b border-gray-50">
+      <span class="block text-xs text-gray-500 mb-1">{{ label }}</span>
+      <span class="block text-sm font-medium text-gray-800 leading-relaxed">{{ specifications[key] }}</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div class="py-2.5 border-b border-gray-50">
+      <span class="block text-xs text-gray-500 mb-1">PTA status</span>
+      <span class="block text-sm font-medium text-gray-800 leading-relaxed">
+        {% if approved and non_pta %}Varies: PTA-approved and non-PTA listings are available
+        {% elif approved and unknown %}PTA-approved at some stores; unspecified at others
+        {% elif non_pta and unknown %}Non-PTA at some stores; unspecified at others
+        {% elif approved %}PTA-approved listings available
+        {% elif non_pta %}Non-PTA listings
+        {% else %}Not specified by current retailers{% endif %}
+      </span>
+    </div>
+  </div>
+  <p class="text-[11px] text-gray-500 leading-relaxed mt-4">
+    {% if non_pta %}Non-PTA listings may require DIRBS registration and applicable taxes before local cellular use. Confirm the device IMEI and current registration charges before buying.
+    {% elif approved %}PTA approval is listing-specific. Confirm the retailer's claim and verify the device IMEI before buying.
+    {% else %}PTA status can vary by retailer and device. Confirm the listing and verify the device IMEI before buying.{% endif %}
+    Specifications are cached from the linked retailer source and should be confirmed with the manufacturer.
+  </p>
+</div>

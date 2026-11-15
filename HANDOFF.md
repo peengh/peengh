@@ -18,17 +18,20 @@ The database is a **snapshot**, not a live database service. Future price and im
 - PriceOye can recover a real product-page image when its catalogue-card image is unusable. This applies generally, not only to the originally reported examples.
 - Public listings require a positive, in-stock offer; unpriced direct product pages still render.
 - Optional retailer-supplied JSON/CSV feeds are supported through `STORE_FEEDS`.
+- Cached specifications are imported from exact retailer pages with model/variant validation; PTA status is maintained per offer.
 - One scheduled workflow runs at `0 7 * * *` (12:00 PM Pakistan time); Playwright is not required.
 
 ## Project map
 
-- `app.py`: pages, search, comparison, price refresh, health check, and image enrichment.
+- `app.py`: pages, search, comparison, price refresh, health check, SEO metadata, and image enrichment.
 - `daily_update.py`: scraping orchestration, matching, and atomic database updates.
+- `specs_update.py` and `scrapers/specifications.py`: resumable cached-spec backfill and source validation.
 - `database.py`: schema, migrations, retailers, and official-image seed data.
 - `image_resolver.py`: exact-model image selection and fallback URLs.
 - `scrapers/`: TeleX, Mega.pk, PriceOye, Shophive, HomeShopping, utilities, and direct feeds.
 - `templates/` and `static/`: UI and browser-side image fallback handling.
-- `.github/workflows/scrape.yml`: scheduled updater and database commit.
+- `.github/workflows/scrape.yml`: scheduled price updater and database commit.
+- `.github/workflows/specs.yml`: manually triggered specification backfill.
 - `render.yaml` and `wsgi.py`: Render deployment and application startup.
 
 ## Run locally
@@ -68,6 +71,8 @@ The schedule is 07:00 UTC / 12:00 PM Pakistan time every day. GitHub can start s
 
 The included database may predate the recipient's first workflow run. Run the workflow manually after deployment to refresh live prices and recovered images.
 
+Specifications have a separate **Specification Backfill** manual workflow. Run it with limit `25` for a small batch or `0` for all eligible products. It is not scheduled and shares the price updater's concurrency group. Local usage is `python specs_update.py --limit 25`; see `README.md` for dry-run and single-product commands.
+
 ## Prefer official retailer data where available
 
 Scraping is inherently fragile. Ask stores for a documented product API, affiliate/partner feed, or scheduled JSON/CSV export containing title, price, product URL, image URL, stock, storage, and RAM. The existing `STORE_FEEDS` adapter accepts JSON/CSV feeds and custom field mappings; see the complete example in `README.md`.
@@ -77,7 +82,7 @@ Store feed URLs and credentials in **GitHub → Settings → Secrets and variabl
 ## Verification
 
 ```bash
-python -m py_compile app.py daily_update.py database.py image_resolver.py scrapers/*.py seed_curated.py
+python -m py_compile app.py daily_update.py specs_update.py database.py image_resolver.py scrapers/*.py seed_curated.py
 python - <<'PY'
 from app import app
 client = app.test_client()

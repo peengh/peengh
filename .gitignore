@@ -22,6 +22,7 @@ Thumbs.db
 *.db.bak
 *.db-journal
 *.db.lock
+*.db.specs.lock
 *.db-wal
 *.db-shm
 

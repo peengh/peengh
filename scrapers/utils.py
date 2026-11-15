@@ -189,6 +189,15 @@ def parse_ram(title):
     return None
 
 
+def classify_pta_status(title):
+    normalized = re.sub(r"[\s-]+", " ", str(title or "").upper())
+    if re.search(r"\bNON ?PTA\b|\bPTA (?:NOT APPROVED|UNAPPROVED)\b", normalized):
+        return "non_pta"
+    if re.search(r"\bPTA APPROVED\b", normalized):
+        return "approved"
+    return "unknown"
+
+
 def parse_price(price_text):
     """Parse one PKR amount instead of concatenating old and current prices."""
     if not price_text:
