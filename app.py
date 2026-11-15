@@ -6,7 +6,8 @@ import os
 import re
 import json
 from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, request, jsonify, redirect, url_for, g
+from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, g
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import human_time_ago, parse_timestamp
@@ -25,6 +26,50 @@ PRICED_PRODUCT_SQL = """
           AND available_offer.price > 0
     )
 """
+
+
+def absolute_url(path=""):
+    if str(path).startswith(("https://", "http://")):
+        return str(path)
+    return f"{config.SITE_URL}/{str(path).lstrip('/')}"
+
+
+def build_product_structured_data(product, offers):
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": product["title"],
+        "url": absolute_url(url_for("product", slug=product["slug"])),
+        "description": f"Compare {product['title']} prices from Pakistani mobile retailers on Peengh.",
+        "brand": {"@type": "Brand", "name": product["brand"]},
+    }
+    if product.get("image_url"):
+        data["image"] = [absolute_url(product["image_url"])]
+
+    available_offers = [offer for offer in offers if offer["in_stock"] and offer["price"] > 0]
+    if available_offers:
+        prices = [offer["price"] for offer in available_offers]
+        data["offers"] = {
+            "@type": "AggregateOffer",
+            "priceCurrency": "PKR",
+            "lowPrice": min(prices),
+            "highPrice": max(prices),
+            "offerCount": len(available_offers),
+            "offers": [
+                {
+                    "@type": "Offer",
+                    "url": offer["url"],
+                    "priceCurrency": "PKR",
+                    "price": offer["price"],
+                    "availability": "https://schema.org/InStock",
+                    "itemCondition": "https://schema.org/NewCondition",
+                    "seller": {"@type": "Organization", "name": offer["retailer_name"]},
+                }
+                for offer in available_offers
+            ],
+        }
+    return data
+
 
 # ---------------------------------------------------------------------------
 # DB helpers
@@ -73,6 +118,7 @@ def inject_helpers():
         "human_time_ago": human_time_ago,
         "now": datetime.utcnow(),
         "product_placeholder": url_for("static", filename="images/product-placeholder.svg"),
+        "absolute_url": absolute_url,
     }
 
 
@@ -325,13 +371,17 @@ def product(slug):
             "price": h["price"],
         })
 
+    offer_dicts = [dict(o) for o in offers]
+    store_count = sum(1 for offer in offer_dicts if offer["in_stock"] and offer["price"] > 0)
     return render_template(
         "product.html",
         product=product,
-        offers=[dict(o) for o in offers],
+        offers=offer_dicts,
         similar=[dict(s) for s in similar],
         history_json=json.dumps(history_by_retailer),
         has_stale=has_stale,
+        store_count=store_count,
+        structured_data=build_product_structured_data(product, offer_dicts),
     )
 
 
@@ -616,8 +666,75 @@ def _update_product_prices(conn, product_id):
 
 
 # ---------------------------------------------------------------------------
-# Health and static pages
+# SEO, health, and static pages
 # ---------------------------------------------------------------------------
+
+@app.route("/sitemap.xml")
+def sitemap():
+    conn = get_db_conn()
+    rows = [dict(row) for row in conn.execute(f"""
+        SELECT p.title, p.brand, p.slug, p.lowest_price, p.updated_at
+        FROM products p
+        WHERE {PRICED_PRODUCT_SQL}
+        ORDER BY p.brand, p.lowest_price, p.slug
+    """).fetchall()]
+    conn.close()
+    g.pop("_database", None)
+
+    entries = []
+    seen_paths = set()
+
+    def add_entry(path, updated_at=None):
+        if path in seen_paths:
+            return
+        seen_paths.add(path)
+        entries.append((path, updated_at))
+
+    for path in (
+        url_for("home"), url_for("category"), url_for("about"),
+        url_for("contact"), url_for("privacy"),
+    ):
+        add_entry(path)
+
+    by_brand = {}
+    for row in rows:
+        add_entry(url_for("product", slug=row["slug"]), row["updated_at"])
+        by_brand.setdefault(row["brand"], []).append(row)
+
+    comparisons = set()
+    for brand, products in by_brand.items():
+        add_entry(url_for("brand_page", brand=brand))
+        products.sort(key=lambda row: (row["lowest_price"], row["slug"]))
+        for first, second in zip(products, products[1:]):
+            slug_a, slug_b = sorted((first["slug"], second["slug"]))
+            comparisons.add((slug_a, slug_b))
+
+    for slug_a, slug_b in sorted(comparisons):
+        add_entry(url_for("compare", slug_a=slug_a, slug_b=slug_b))
+
+    urlset = Element("urlset", {"xmlns": "http://www.sitemaps.org/schemas/sitemap/0.9"})
+    for path, updated_at in entries:
+        url_element = SubElement(urlset, "url")
+        SubElement(url_element, "loc").text = absolute_url(path)
+        if updated_at:
+            try:
+                lastmod = parse_timestamp(updated_at).date().isoformat()
+            except (TypeError, ValueError):
+                lastmod = None
+            if lastmod:
+                SubElement(url_element, "lastmod").text = lastmod
+
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+    response = Response(xml, mimetype="application/xml")
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+@app.route("/robots.txt")
+def robots():
+    content = f"User-agent: *\nAllow: /\n\nSitemap: {absolute_url('/sitemap.xml')}\n"
+    return Response(content, mimetype="text/plain")
+
 
 @app.route("/health")
 def health():

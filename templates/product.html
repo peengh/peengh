@@ -1,8 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ product.title }} — Price Comparison — Peengh{% endblock %}
-{% block meta_desc %}Compare prices for {{ product.title }} in Pakistan. Lowest price from top stores.{% endblock %}
+{% block title %}{{ product.title }} Price in Pakistan{% if store_count %} — Compare {{ store_count }} Store{{ 's' if store_count != 1 else '' }}{% endif %} | Peengh{% endblock %}
+{% block meta_desc %}{% if product.lowest_price %}{{ product.title }} price in Pakistan starts at Rs {{ "{:,}".format(product.lowest_price) }}. Compare prices from {{ store_count }} store{{ 's' if store_count != 1 else '' }} on Peengh.{% else %}View {{ product.title }} specifications and check the latest prices from Pakistani retailers on Peengh.{% endif %}{% endblock %}
+{% block og_type %}product{% endblock %}
+{% block og_image %}{{ absolute_url(product.image_url or url_for('static', filename='images/logo-lockup.png')) }}{% endblock %}
 
 {% block head_extra %}
+<script type="application/ld+json">{{ structured_data|tojson }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 {% endblock %}
 
