@@ -90,6 +90,10 @@ PTA status is stored per retailer offer. Only explicit title wording produces `a
 
 Every product page includes a server-rendered overview built from cached specifications, current in-stock offers, its price segment, and the closest-priced phone in that segment. `product_content.py` prepares the factual context and `templates/partials/product_summary.html` renders it. Narratives are generated at request time rather than stored in SQLite, so they change with the catalogue without an AI service or another database migration. Products with missing specifications or prices receive shorter summaries without invented details.
 
+### Automatic competitor comparisons
+
+Priced phone pages link to their immediate price neighbours in the same segment, with the closest neighbour highlighted along with its current price and absolute price difference. These relationships are reciprocal, use canonical comparison URLs, and are included in the sitemap. Reversed comparison URLs permanently redirect to the canonical pair. The module is rendered by `templates/partials/product_comparisons.html`; unpriced products and accessories do not receive fabricated comparisons.
+
 ### Direct retailer feeds
 
 A retailer-supplied JSON or CSV feed can replace scraping for any configured store. Set `STORE_FEEDS` to a JSON object keyed by `telex`, `mega`, `priceoye`, `shophive`, or `homeshopping`. For example:

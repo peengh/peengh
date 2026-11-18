@@ -1,0 +1,33 @@
+{% if comparison.primary %}
+<section class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6" id="compare-competitors">
+  <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-2">Compare with competitors</h2>
+  <p class="text-sm text-gray-500 mb-4">See current prices and specifications side by side before choosing a phone.</p>
+
+  <div class="rounded-xl bg-peengh-teal/5 border border-peengh-teal/10 p-4">
+    <span class="block text-[11px] font-semibold uppercase tracking-wide text-peengh-teal mb-1">Closest competitor</span>
+    <h3 class="text-sm font-semibold text-peengh-navy">{{ comparison.primary.title }}</h3>
+    <p class="text-sm text-gray-600 mt-1">
+      Current price: Rs {{ "{:,}".format(comparison.primary.lowest_price) }}
+      · {% if comparison.primary.price_difference %}Price difference: Rs {{ "{:,}".format(comparison.primary.price_difference) }}{% else %}Same starting price{% endif %}
+    </p>
+    <a href="{{ comparison.primary.compare_url }}" class="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-peengh-teal hover:underline tap-target">
+      {{ product.title }} vs {{ comparison.primary.title }} <span aria-hidden="true">→</span>
+    </a>
+  </div>
+
+  {% if comparison['items']|length > 1 %}
+  <div class="mt-4 pt-4 border-t border-gray-100">
+    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Another nearby comparison</h3>
+    {% for item in comparison['items'][1:] %}
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <p class="text-sm font-medium text-gray-800">{{ item.title }}</p>
+        <p class="text-xs text-gray-500 mt-0.5">Rs {{ "{:,}".format(item.lowest_price) }} · {% if item.price_difference %}Rs {{ "{:,}".format(item.price_difference) }} difference{% else %}Same starting price{% endif %}</p>
+      </div>
+      <a href="{{ item.compare_url }}" class="text-sm font-semibold text-peengh-teal hover:underline tap-target" aria-label="Compare {{ product.title }} with {{ item.title }}">Compare phones →</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}

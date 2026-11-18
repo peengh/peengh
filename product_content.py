@@ -59,3 +59,37 @@ def build_summary_context(product, offers, alternative=None):
         "highest_price": highest_price,
         "product_type": product_type(product.get("title")),
     }
+
+
+def build_comparison_context(product, previous_product=None, next_product=None):
+    price = product.get("lowest_price")
+    candidates = []
+    if price and price > 0:
+        for neighbor in (previous_product, next_product):
+            if not neighbor:
+                continue
+            candidate = dict(neighbor)
+            candidate_price = candidate.get("lowest_price")
+            if candidate.get("id") == product.get("id") or not candidate_price:
+                continue
+            candidate["price_difference"] = abs(candidate_price - price)
+            candidate["slug_a"], candidate["slug_b"] = sorted(
+                (product["slug"], candidate["slug"])
+            )
+            candidates.append(candidate)
+
+    primary = None
+    if candidates:
+        primary = min(
+            candidates,
+            key=lambda item: (item["price_difference"], item["title"].lower(), item["id"]),
+        )
+    candidates.sort(
+        key=lambda item: (
+            item["id"] != primary["id"] if primary else True,
+            item["price_difference"],
+            item["title"].lower(),
+            item["id"],
+        )
+    )
+    return {"primary": primary, "items": candidates}

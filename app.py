@@ -14,6 +14,7 @@ from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
 from product_content import (
     ACCESSORY_TITLE_SQL,
+    build_comparison_context,
     build_summary_context,
     price_segment,
     product_type,
@@ -390,28 +391,47 @@ def product(slug):
     """, (product["brand"], product["id"], product.get("lowest_price", 0) or 0)).fetchall()
     similar = enrich_products_with_images([dict(r) for r in similar])
 
-    alternative = None
+    previous_product = None
+    next_product = None
     segment = price_segment(product.get("lowest_price"))
     if segment and product_type(product["title"]) == "phone":
         lower_bound, upper_bound = segment_bounds(segment)
-        alternative_where = [PRICED_PRODUCT_SQL, "p.id != ?", ACCESSORY_TITLE_SQL]
-        alternative_params = [product["id"]]
+        comparison_where = [PRICED_PRODUCT_SQL, ACCESSORY_TITLE_SQL]
+        comparison_params = []
         if lower_bound is not None:
-            alternative_where.append("p.lowest_price >= ?")
-            alternative_params.append(lower_bound)
+            comparison_where.append("p.lowest_price >= ?")
+            comparison_params.append(lower_bound)
         if upper_bound is not None:
-            alternative_where.append("p.lowest_price <= ?")
-            alternative_params.append(upper_bound)
-        alternative_params.append(product["lowest_price"])
-        alternative_row = conn.execute(f"""
+            comparison_where.append("p.lowest_price <= ?")
+            comparison_params.append(upper_bound)
+        comparison_select = f"""
             SELECT p.id, p.title, p.brand, p.slug, p.lowest_price
             FROM products p
-            WHERE {' AND '.join(alternative_where)}
-            ORDER BY ABS(p.lowest_price - ?) ASC, p.view_count DESC, p.id ASC
-            LIMIT 1
-        """, alternative_params).fetchone()
-        if alternative_row:
-            alternative = dict(alternative_row)
+            WHERE {{where_sql}}
+        """
+        previous_product = conn.execute(
+            comparison_select.format(where_sql=" AND ".join(
+                comparison_where + [
+                    "(p.lowest_price < ? OR (p.lowest_price = ? AND p.id < ?))"
+                ]
+            )) + " ORDER BY p.lowest_price DESC, p.id DESC LIMIT 1",
+            comparison_params + [product["lowest_price"], product["lowest_price"], product["id"]],
+        ).fetchone()
+        next_product = conn.execute(
+            comparison_select.format(where_sql=" AND ".join(
+                comparison_where + [
+                    "(p.lowest_price > ? OR (p.lowest_price = ? AND p.id > ?))"
+                ]
+            )) + " ORDER BY p.lowest_price ASC, p.id ASC LIMIT 1",
+            comparison_params + [product["lowest_price"], product["lowest_price"], product["id"]],
+        ).fetchone()
+
+    comparison = build_comparison_context(product, previous_product, next_product)
+    for item in comparison["items"]:
+        item["compare_url"] = url_for(
+            "compare", slug_a=item["slug_a"], slug_b=item["slug_b"]
+        )
+    alternative = comparison["primary"]
 
     conn.close()
     g.pop("_database", None)
@@ -441,6 +461,7 @@ def product(slug):
         store_count=store_count,
         specifications=specifications,
         summary=summary,
+        comparison=comparison,
         structured_data=build_product_structured_data(product, offer_dicts),
     )
 
@@ -451,12 +472,18 @@ def product(slug):
 
 @app.route("/compare/<slug_a>-vs-<slug_b>")
 def compare(slug_a, slug_b):
-    conn = get_db_conn()
+    canonical_a, canonical_b = sorted((slug_a, slug_b))
+    if (slug_a, slug_b) != (canonical_a, canonical_b):
+        return redirect(url_for(
+            "compare", slug_a=canonical_a, slug_b=canonical_b
+        ), code=301)
 
+    conn = get_db_conn()
     rows = conn.execute(f"""
         SELECT p.* FROM products p
         WHERE p.slug IN (?, ?) AND {PRICED_PRODUCT_SQL}
-    """, (slug_a, slug_b)).fetchall()
+        ORDER BY CASE WHEN p.slug = ? THEN 0 ELSE 1 END
+    """, (canonical_a, canonical_b, canonical_a)).fetchall()
 
     if len(rows) < 2:
         conn.close()
@@ -735,7 +762,7 @@ def _update_product_prices(conn, product_id):
 def sitemap():
     conn = get_db_conn()
     rows = [dict(row) for row in conn.execute(f"""
-        SELECT p.title, p.brand, p.slug, p.lowest_price, p.updated_at
+        SELECT p.id, p.title, p.brand, p.slug, p.lowest_price, p.updated_at
         FROM products p
         WHERE {PRICED_PRODUCT_SQL}
         ORDER BY p.brand, p.lowest_price, p.slug
@@ -759,14 +786,24 @@ def sitemap():
         add_entry(path)
 
     by_brand = {}
+    by_segment = {}
     for row in rows:
         add_entry(url_for("product", slug=row["slug"]), row["updated_at"])
         by_brand.setdefault(row["brand"], []).append(row)
+        if product_type(row["title"]) == "phone":
+            segment = price_segment(row["lowest_price"])
+            by_segment.setdefault(segment, []).append(row)
 
     comparisons = set()
     for brand, products in by_brand.items():
         add_entry(url_for("brand_page", brand=brand))
         products.sort(key=lambda row: (row["lowest_price"], row["slug"]))
+        for first, second in zip(products, products[1:]):
+            slug_a, slug_b = sorted((first["slug"], second["slug"]))
+            comparisons.add((slug_a, slug_b))
+
+    for products in by_segment.values():
+        products.sort(key=lambda row: (row["lowest_price"], row["id"]))
         for first, second in zip(products, products[1:]):
             slug_a, slug_b = sorted((first["slug"], second["slug"]))
             comparisons.add((slug_a, slug_b))
