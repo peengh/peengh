@@ -86,6 +86,10 @@ Use Python 3.11. On GitHub, open **Actions → Specification Backfill → Run wo
 
 PTA status is stored per retailer offer. Only explicit title wording produces `approved` or `non_pta`; unspecified listings remain `unknown`. Registration charges are not inferred.
 
+### Automated product overviews
+
+Every product page includes a server-rendered overview built from cached specifications, current in-stock offers, its price segment, and the closest-priced phone in that segment. `product_content.py` prepares the factual context and `templates/partials/product_summary.html` renders it. Narratives are generated at request time rather than stored in SQLite, so they change with the catalogue without an AI service or another database migration. Products with missing specifications or prices receive shorter summaries without invented details.
+
 ### Direct retailer feeds
 
 A retailer-supplied JSON or CSV feed can replace scraping for any configured store. Set `STORE_FEEDS` to a JSON object keyed by `telex`, `mega`, `priceoye`, `shophive`, or `homeshopping`. For example:

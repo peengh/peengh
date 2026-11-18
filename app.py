@@ -12,6 +12,13 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
+from product_content import (
+    ACCESSORY_TITLE_SQL,
+    build_summary_context,
+    price_segment,
+    product_type,
+    segment_bounds,
+)
 import config
 
 app = Flask(__name__)
@@ -383,6 +390,29 @@ def product(slug):
     """, (product["brand"], product["id"], product.get("lowest_price", 0) or 0)).fetchall()
     similar = enrich_products_with_images([dict(r) for r in similar])
 
+    alternative = None
+    segment = price_segment(product.get("lowest_price"))
+    if segment and product_type(product["title"]) == "phone":
+        lower_bound, upper_bound = segment_bounds(segment)
+        alternative_where = [PRICED_PRODUCT_SQL, "p.id != ?", ACCESSORY_TITLE_SQL]
+        alternative_params = [product["id"]]
+        if lower_bound is not None:
+            alternative_where.append("p.lowest_price >= ?")
+            alternative_params.append(lower_bound)
+        if upper_bound is not None:
+            alternative_where.append("p.lowest_price <= ?")
+            alternative_params.append(upper_bound)
+        alternative_params.append(product["lowest_price"])
+        alternative_row = conn.execute(f"""
+            SELECT p.id, p.title, p.brand, p.slug, p.lowest_price
+            FROM products p
+            WHERE {' AND '.join(alternative_where)}
+            ORDER BY ABS(p.lowest_price - ?) ASC, p.view_count DESC, p.id ASC
+            LIMIT 1
+        """, alternative_params).fetchone()
+        if alternative_row:
+            alternative = dict(alternative_row)
+
     conn.close()
     g.pop("_database", None)
 
@@ -399,6 +429,8 @@ def product(slug):
 
     offer_dicts = [dict(o) for o in offers]
     store_count = sum(1 for offer in offer_dicts if offer["in_stock"] and offer["price"] > 0)
+    specifications = load_product_specifications(product)
+    summary = build_summary_context(product, offer_dicts, alternative)
     return render_template(
         "product.html",
         product=product,
@@ -407,7 +439,8 @@ def product(slug):
         history_json=json.dumps(history_by_retailer),
         has_stale=has_stale,
         store_count=store_count,
-        specifications=load_product_specifications(product),
+        specifications=specifications,
+        summary=summary,
         structured_data=build_product_structured_data(product, offer_dicts),
     )
 

@@ -19,11 +19,13 @@ The database is a **snapshot**, not a live database service. Future price and im
 - Public listings require a positive, in-stock offer; unpriced direct product pages still render.
 - Optional retailer-supplied JSON/CSV feeds are supported through `STORE_FEEDS`.
 - Cached specifications are imported from exact retailer pages with model/variant validation; PTA status is maintained per offer.
+- Product overviews are generated from cached specifications, current prices, store coverage, price segments, and listing-level PTA status without an AI service or narrative database column.
 - One scheduled workflow runs at `0 7 * * *` (12:00 PM Pakistan time); Playwright is not required.
 
 ## Project map
 
 - `app.py`: pages, search, comparison, price refresh, health check, SEO metadata, and image enrichment.
+- `product_content.py` and `templates/partials/product_summary.html`: deterministic product-overview context and rendering.
 - `daily_update.py`: scraping orchestration, matching, and atomic database updates.
 - `specs_update.py` and `scrapers/specifications.py`: resumable cached-spec backfill and source validation.
 - `database.py`: schema, migrations, retailers, and official-image seed data.

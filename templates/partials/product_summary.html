@@ -1,0 +1,31 @@
+<section class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6" id="product-overview">
+  <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-3">Overview</h2>
+  <div class="space-y-3 text-sm text-gray-600 leading-relaxed">
+    <p>
+      The {{ product.title }} is a {{ product.brand }} {{ summary.product_type }}{% if summary.segment %} positioned in the {{ summary.segment }} segment{% endif %}.
+      {% if specifications.get('display') and specifications.get('chipset') %}It pairs a {{ specifications.display }} display with the {{ specifications.chipset }} chipset.{% elif specifications.get('display') %}Its display specification is {{ specifications.display }}.{% elif specifications.get('chipset') %}It uses the {{ specifications.chipset }} chipset.{% endif %}
+      {% if specifications.get('ram') and specifications.get('storage') %}The listed configuration includes {{ specifications.ram }} RAM and {{ specifications.storage }} of storage.{% elif specifications.get('ram') %}The listed configuration includes {{ specifications.ram }} RAM.{% elif specifications.get('storage') %}The listed storage is {{ specifications.storage }}.{% endif %}
+      {% if specifications.get('camera') %}The camera setup is listed as {{ specifications.camera }}.{% endif %}
+      {% if specifications.get('battery') %}Battery capacity is {{ specifications.battery }}{% if specifications.get('charging') %}, with charging support listed as {{ specifications.charging }}{% endif %}.{% elif specifications.get('charging') %}Charging support is listed as {{ specifications.charging }}.{% endif %}
+    </p>
+    <p>
+      {% if summary.lowest_price %}
+      Current prices on Peengh start at Rs {{ "{:,}".format(summary.lowest_price) }} from {{ summary.store_count }} store{{ 's' if summary.store_count != 1 else '' }}.
+      {% if summary.highest_price > summary.lowest_price %}Available listings range up to Rs {{ "{:,}".format(summary.highest_price) }}, so comparing the offers below can help identify the best current deal.{% endif %}
+      {% if summary.alternative and summary.price_difference is not none %}The closest-priced phone in the same segment is the {{ summary.alternative.title }} at Rs {{ "{:,}".format(summary.alternative.lowest_price) }}{% if summary.price_difference %}, a difference of Rs {{ "{:,}".format(summary.price_difference) }}{% else %}, matching this phone's starting price{% endif %}.{% endif %}
+      {% else %}
+      Peengh has not matched this model to a current in-stock retailer price yet. Current pricing and store coverage will appear here when a valid offer becomes available.
+      {% endif %}
+    </p>
+    <p>
+      {% if summary.has_pta_approved and summary.has_non_pta %}Current offers include both PTA-approved and non-PTA listings.
+      {% elif summary.has_pta_approved %}PTA-approved listings are available{% if summary.has_unknown_pta %}, although PTA status is unspecified for some other offers{% endif %}.
+      {% elif summary.has_non_pta %}Current offers include non-PTA listings{% if summary.has_unknown_pta %}, while PTA status is unspecified for some other offers{% endif %}.
+      {% elif summary.has_unknown_pta %}Current retailers have not specified PTA status for the available offers.
+      {% else %}No current store offer is available to establish listing-specific PTA status.{% endif %}
+      {% if summary.has_non_pta %}Non-PTA devices may require DIRBS registration and applicable taxes before local cellular use.{% endif %}
+      Confirm the retailer's PTA details and verify the device IMEI before buying.
+    </p>
+  </div>
+  <p class="text-[11px] text-gray-400 mt-4">Summary generated from cached specifications and current store listings.</p>
+</section>
