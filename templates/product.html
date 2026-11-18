@@ -6,6 +6,7 @@
 
 {% block head_extra %}
 <script type="application/ld+json">{{ structured_data|tojson }}</script>
+{% if faq_structured_data %}<script type="application/ld+json">{{ faq_structured_data|tojson }}</script>{% endif %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 {% endblock %}
 
@@ -113,6 +114,8 @@
       {% include "partials/specifications.html" %}
 
       {% include "partials/product_comparisons.html" %}
+
+      {% include "partials/faqs.html" %}
 
       <!-- Similar Phones -->
       {% if similar %}

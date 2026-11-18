@@ -15,6 +15,8 @@ from image_resolver import is_usable_product_image, resolve_image, save_scraped_
 from product_content import (
     ACCESSORY_TITLE_SQL,
     build_comparison_context,
+    build_faq_structured_data,
+    build_product_faqs,
     build_summary_context,
     price_segment,
     product_type,
@@ -437,8 +439,9 @@ def product(slug):
     g.pop("_database", None)
 
     # Format history for Chart.js
+    history_rows = [dict(row) for row in history]
     history_by_retailer = {}
-    for h in history:
+    for h in history_rows:
         key = h["retailer_name"]
         if key not in history_by_retailer:
             history_by_retailer[key] = []
@@ -451,6 +454,7 @@ def product(slug):
     store_count = sum(1 for offer in offer_dicts if offer["in_stock"] and offer["price"] > 0)
     specifications = load_product_specifications(product)
     summary = build_summary_context(product, offer_dicts, alternative)
+    faqs = build_product_faqs(product, specifications, offer_dicts, history_rows)
     return render_template(
         "product.html",
         product=product,
@@ -462,6 +466,8 @@ def product(slug):
         specifications=specifications,
         summary=summary,
         comparison=comparison,
+        faqs=faqs,
+        faq_structured_data=build_faq_structured_data(faqs),
         structured_data=build_product_structured_data(product, offer_dicts),
     )
 

@@ -21,13 +21,15 @@ The database is a **snapshot**, not a live database service. Future price and im
 - Cached specifications are imported from exact retailer pages with model/variant validation; PTA status is maintained per offer.
 - Product overviews are generated from cached specifications, current prices, store coverage, price segments, and listing-level PTA status without an AI service or narrative database column.
 - Product pages cross-link reciprocal, same-segment competitor comparisons with current prices and differences; comparison pairs use canonical URLs and appear in the sitemap.
+- Three to five server-rendered product FAQs use current offers, explicit PTA labels, known variants, cached specifications, and price snapshots, with matching FAQPage structured data.
 - One scheduled workflow runs at `0 7 * * *` (12:00 PM Pakistan time); Playwright is not required.
 
 ## Project map
 
 - `app.py`: pages, search, comparison, price refresh, health check, SEO metadata, and image enrichment.
-- `product_content.py` and `templates/partials/product_summary.html`: deterministic product-overview context and rendering.
+- `product_content.py` and `templates/partials/product_summary.html`: deterministic product-overview context, FAQs, and rendering.
 - `templates/partials/product_comparisons.html`: closest-competitor and neighbouring comparison links.
+- `templates/partials/faqs.html`: expandable product FAQs.
 - `daily_update.py`: scraping orchestration, matching, and atomic database updates.
 - `specs_update.py` and `scrapers/specifications.py`: resumable cached-spec backfill and source validation.
 - `database.py`: schema, migrations, retailers, and official-image seed data.

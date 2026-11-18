@@ -1,0 +1,16 @@
+{% if faqs %}
+<section class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6" id="product-faqs">
+  <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-2">Frequently Asked Questions</h2>
+  <div class="divide-y divide-gray-100">
+    {% for faq in faqs %}
+    <details class="group py-3" {% if loop.first %}open{% endif %}>
+      <summary class="flex items-start justify-between gap-4 cursor-pointer list-none tap-target">
+        <span class="text-sm font-semibold text-gray-800 leading-relaxed">{{ faq.question }}</span>
+        <span class="flex-shrink-0 text-xl font-light leading-5 text-peengh-teal transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+      </summary>
+      <p class="text-sm text-gray-600 leading-relaxed mt-2.5 pr-6">{{ faq.answer }}</p>
+    </details>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

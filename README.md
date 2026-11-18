@@ -94,6 +94,10 @@ Every product page includes a server-rendered overview built from cached specifi
 
 Priced phone pages link to their immediate price neighbours in the same segment, with the closest neighbour highlighted along with its current price and absolute price difference. These relationships are reciprocal, use canonical comparison URLs, and are included in the sitemap. Reversed comparison URLs permanently redirect to the canonical pair. The module is rendered by `templates/partials/product_comparisons.html`; unpriced products and accessories do not receive fabricated comparisons.
 
+### Product FAQs
+
+Every product page renders three to five FAQs from its current cheapest offer, explicit offer-level PTA status, known RAM/storage variant, cached specifications, and available daily price snapshots. `product_content.py` generates both the answers and matching `FAQPage` structured data; `templates/partials/faqs.html` renders the expandable section. PTA-approved prices are quoted only from offers explicitly marked approved, historical prices are labelled as snapshots, and missing data is never replaced with invented details.
+
 ### Direct retailer feeds
 
 A retailer-supplied JSON or CSV feed can replace scraping for any configured store. Set `STORE_FEEDS` to a JSON object keyed by `telex`, `mega`, `priceoye`, `shophive`, or `homeshopping`. For example:
