@@ -44,6 +44,13 @@ def absolute_url(path=""):
     return f"{config.SITE_URL}/{str(path).lstrip('/')}"
 
 
+@app.before_request
+def redirect_pk_domains():
+    host = request.host.split(":", 1)[0].lower().rstrip(".")
+    if host in {"peengh.pk", "www.peengh.pk"}:
+        return redirect(absolute_url(request.full_path.rstrip("?")), code=301)
+
+
 def load_product_specifications(product):
     try:
         stored = json.loads(product.get("specs_json") or "{}")
