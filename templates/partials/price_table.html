@@ -36,6 +36,12 @@
           {% else %}
           <span class="text-xs text-gray-400">Not specified</span>
           {% endif %}
+          {% if o.warranty != 'unknown' %}
+          <div class="text-[10px] text-gray-500 mt-1">{{ {'official': 'Official warranty', 'seller': 'Seller warranty'}[o.warranty] }}</div>
+          {% endif %}
+          {% if o.condition != 'unknown' %}
+          <div class="text-[10px] text-gray-500">{{ {'new': 'New', 'used': 'Used', 'refurbished': 'Refurbished'}[o.condition] }}</div>
+          {% endif %}
         </td>
         <td class="py-3 px-3">
           {% if o.in_stock %}
@@ -83,6 +89,12 @@
     <div class="mb-2 text-[10px] font-medium {% if o.pta_status == 'approved' %}text-green-700{% elif o.pta_status == 'non_pta' %}text-amber-700{% else %}text-gray-400{% endif %}">
       {% if o.pta_status == 'approved' %}PTA approved{% elif o.pta_status == 'non_pta' %}Non-PTA — registration may be required{% else %}PTA status not specified{% endif %}
     </div>
+    {% if o.warranty != 'unknown' or o.condition != 'unknown' %}
+    <div class="mb-2 flex flex-wrap gap-x-2 text-[10px] text-gray-500">
+      {% if o.warranty != 'unknown' %}<span>{{ {'official': 'Official warranty', 'seller': 'Seller warranty'}[o.warranty] }}</span>{% endif %}
+      {% if o.condition != 'unknown' %}<span>{{ {'new': 'New', 'used': 'Used', 'refurbished': 'Refurbished'}[o.condition] }}</span>{% endif %}
+    </div>
+    {% endif %}
     <div class="flex items-center justify-between">
       <span class="text-[10px] text-gray-400">Updated {{ human_time_ago(o.last_checked) }}</span>
       <a href="{{ o.url }}" target="_blank" rel="noopener" class="bg-peengh-navy text-white text-xs font-semibold px-4 py-2 rounded-lg tap-target hover:bg-peengh-amber transition">

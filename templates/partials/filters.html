@@ -74,7 +74,7 @@
 
   <!-- Clear All -->
   {% if filters.brand or filters.min_price or filters.max_price or filters.storage or filters.ram %}
-  <a href="/mobiles{% if filters.sort %}?sort={{ filters.sort }}{% endif %}" class="block w-full text-center py-2.5 rounded-lg border border-peengh-terra text-peengh-terra text-sm font-medium hover:bg-peengh-terra hover:text-white transition tap-target">
+  <a href="{{ category_url }}{% if filters.sort %}?sort={{ filters.sort }}{% endif %}" class="block w-full text-center py-2.5 rounded-lg border border-peengh-terra text-peengh-terra text-sm font-medium hover:bg-peengh-terra hover:text-white transition tap-target">
     Clear All Filters
   </a>
   {% endif %}

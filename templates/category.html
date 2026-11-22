@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Mobile Phone Prices in Pakistan — Compare Stores | Peengh{% endblock %}
-{% block meta_desc %}Compare mobile phone prices in Pakistan across trusted retailers. Filter by brand, storage, RAM, and price to find the best deal on Peengh.{% endblock %}
+{% block title %}{{ catalogue_page.title }}{% endblock %}
+{% block meta_desc %}{{ catalogue_page.description }}{% endblock %}
 
 {% block content %}
 <!-- Breadcrumb -->
@@ -8,16 +8,24 @@
   <nav class="text-xs sm:text-sm text-gray-500">
     <a href="/" class="hover:text-peengh-navy">Home</a>
     <span class="mx-1.5">/</span>
-    <span class="text-gray-800 font-medium">Mobiles</span>
+    <span class="text-gray-800 font-medium">{{ catalogue_page.heading }}</span>
   </nav>
 </div>
 
 <div class="max-w-[1200px] mx-auto px-4 pb-10">
+  <nav aria-label="Device categories" class="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-5">
+    {% for tab in catalogue_tabs %}
+    <a href="{{ tab.url }}" {% if tab.active %}aria-current="page"{% endif %} class="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border transition tap-target {% if tab.active %}bg-peengh-navy text-white border-peengh-navy{% else %}bg-white text-gray-600 border-gray-200 hover:border-peengh-amber{% endif %}">
+      {{ tab.label }}
+      <span class="text-xs {% if tab.active %}text-white/75{% else %}text-gray-400{% endif %}">{{ tab.count }}</span>
+    </a>
+    {% endfor %}
+  </nav>
   <div class="flex flex-col lg:flex-row gap-6">
 
     <!-- Mobile Filter Button -->
     <div class="lg:hidden flex items-center justify-between mb-2">
-      <h1 class="text-xl font-bold text-peengh-navy">All Mobiles</h1>
+      <h1 class="text-xl font-bold text-peengh-navy">{{ catalogue_page.heading }}</h1>
       <button @click="filterOpen = true" class="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm font-medium tap-target shadow-sm">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
         Filters
@@ -72,7 +80,7 @@
     <div class="flex-1">
       <!-- Sort Bar (Desktop) -->
       <div class="hidden lg:flex items-center justify-between mb-4">
-        <h1 class="text-xl font-bold text-peengh-navy">All Mobiles</h1>
+        <h1 class="text-xl font-bold text-peengh-navy">{{ catalogue_page.heading }}</h1>
         <form method="get" class="flex items-center gap-2" id="sort-form">
           {% for k, v in filters.items() if k != 'sort' and v %}
           <input type="hidden" name="{{ k }}" value="{{ v }}">
@@ -102,7 +110,7 @@
       </div>
 
       <!-- Results Count -->
-      <p class="text-xs text-gray-500 mb-3">{{ products|length }} phone{{ 's' if products|length != 1 else '' }} found</p>
+      <p class="text-xs text-gray-500 mb-3">{{ products|length }} {{ catalogue_page.plural if products|length != 1 else catalogue_page.singular }} found</p>
 
       <!-- Grid -->
       {% if products %}
@@ -137,9 +145,9 @@
         <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
           <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         </div>
-        <h3 class="font-semibold text-gray-700 mb-1">No phones found</h3>
+        <h3 class="font-semibold text-gray-700 mb-1">No {{ catalogue_page.plural }} found</h3>
         <p class="text-sm text-gray-500">Try adjusting your filters</p>
-        <a href="/mobiles" class="inline-block mt-3 text-sm font-medium text-peengh-teal hover:underline">Clear all filters</a>
+        <a href="{{ category_url }}" class="inline-block mt-3 text-sm font-medium text-peengh-teal hover:underline">Clear all filters</a>
       </div>
       {% endif %}
     </div>

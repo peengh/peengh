@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, g
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from catalogue import DEVICE_CATEGORIES, classify_condition, classify_warranty
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
@@ -105,7 +106,13 @@ def build_product_structured_data(product, offers):
                     "priceCurrency": "PKR",
                     "price": offer["price"],
                     "availability": "https://schema.org/InStock",
-                    "itemCondition": "https://schema.org/NewCondition",
+                    **({
+                        "itemCondition": "https://schema.org/{}".format({
+                            "new": "NewCondition",
+                            "used": "UsedCondition",
+                            "refurbished": "RefurbishedCondition",
+                        }[offer["condition"]])
+                    } if offer["condition"] in {"new", "used", "refurbished"} else {}),
                     "seller": {"@type": "Organization", "name": offer["retailer_name"]},
                 }
                 for offer in available_offers
@@ -230,12 +237,72 @@ def home():
 
 
 # ---------------------------------------------------------------------------
-# Category (/mobiles)
+# Device catalogues
 # ---------------------------------------------------------------------------
+
+CATALOGUE_PAGES = {
+    None: {
+        "title": "Mobile Phone Prices in Pakistan — Compare Stores | Peengh",
+        "heading": "All Mobiles",
+        "description": "Compare mobile phone prices in Pakistan across trusted retailers. Filter by brand, storage, RAM, and price to find the best deal on Peengh.",
+        "singular": "phone",
+        "plural": "phones",
+    },
+    "smartphones": {
+        "title": "Smartphone Prices in Pakistan — Compare Stores | Peengh",
+        "heading": "Smartphones",
+        "description": "Compare smartphone prices in Pakistan across trusted retailers. Filter by brand, storage, RAM, and price on Peengh.",
+        "singular": "smartphone",
+        "plural": "smartphones",
+    },
+    "feature_phones": {
+        "title": "Feature Phone Prices in Pakistan — Compare Stores | Peengh",
+        "heading": "Feature Phones",
+        "description": "Compare feature phone and keypad mobile prices in Pakistan across trusted retailers on Peengh.",
+        "singular": "feature phone",
+        "plural": "feature phones",
+    },
+    "other_devices": {
+        "title": "Other Mobile Device Prices in Pakistan | Peengh",
+        "heading": "Other Mobile Devices",
+        "description": "Compare prices for mobile accessories and other mobile devices from Pakistani retailers on Peengh.",
+        "singular": "device",
+        "plural": "devices",
+    },
+}
+
+
+CATALOGUE_PATHS = {
+    None: "/mobiles",
+    "smartphones": "/smartphones",
+    "feature_phones": "/feature-phones",
+    "other_devices": "/other-mobile-devices",
+}
+
 
 @app.route("/mobiles")
 def category():
+    return device_catalogue(None)
+
+
+@app.route("/smartphones")
+def smartphone_category():
+    return device_catalogue("smartphones")
+
+
+@app.route("/feature-phones")
+def feature_phone_category():
+    return device_catalogue("feature_phones")
+
+
+@app.route("/other-mobile-devices")
+def other_device_category():
+    return device_catalogue("other_devices")
+
+
+def device_catalogue(device_category):
     conn = get_db_conn()
+    catalogue_page = CATALOGUE_PAGES[device_category]
 
     # Query params
     brand_filter = request.args.get("brand", "")
@@ -252,6 +319,13 @@ def category():
     # Build query
     where_clauses = [PRICED_PRODUCT_SQL]
     params = []
+    category_sql = ""
+    filter_params = []
+    if device_category:
+        where_clauses.append("p.device_category = ?")
+        params.append(device_category)
+        category_sql = " AND p.device_category = ?"
+        filter_params.append(device_category)
 
     if brand_filter:
         where_clauses.append("p.brand = ?")
@@ -281,7 +355,8 @@ def category():
     # Products
     products = conn.execute(f"""
         SELECT p.id, p.title, p.brand, p.slug, p.image_url,
-               p.lowest_price, p.highest_price, p.storage, p.ram, p.view_count
+               p.lowest_price, p.highest_price, p.storage, p.ram, p.view_count,
+               p.device_category
         FROM products p
         WHERE {where_sql}
         ORDER BY {order_sql}
@@ -292,20 +367,28 @@ def category():
     # Filter options
     all_brands = conn.execute(f"""
         SELECT p.brand, COUNT(*) AS count FROM products p
-        WHERE {PRICED_PRODUCT_SQL}
+        WHERE {PRICED_PRODUCT_SQL}{category_sql}
         GROUP BY p.brand ORDER BY count DESC
-    """).fetchall()
+    """, filter_params).fetchall()
     all_storage = conn.execute(f"""
         SELECT p.storage, COUNT(*) AS count FROM products p
-        WHERE {PRICED_PRODUCT_SQL} AND p.storage IS NOT NULL AND p.storage != ''
+        WHERE {PRICED_PRODUCT_SQL}{category_sql} AND p.storage IS NOT NULL AND p.storage != ''
         GROUP BY p.storage ORDER BY count DESC
-    """).fetchall()
+    """, filter_params).fetchall()
     all_ram = conn.execute(f"""
         SELECT p.ram, COUNT(*) AS count FROM products p
-        WHERE {PRICED_PRODUCT_SQL} AND p.ram GLOB '[0-9]*GB'
+        WHERE {PRICED_PRODUCT_SQL}{category_sql} AND p.ram GLOB '[0-9]*GB'
           AND CAST(REPLACE(UPPER(p.ram), 'GB', '') AS INTEGER) BETWEEN 1 AND 48
         GROUP BY p.ram ORDER BY count DESC
-    """).fetchall()
+    """, filter_params).fetchall()
+    category_counts = {
+        row["device_category"]: row["count"] for row in conn.execute(f"""
+            SELECT p.device_category, COUNT(*) AS count FROM products p
+            WHERE {PRICED_PRODUCT_SQL}
+            GROUP BY p.device_category
+        """).fetchall()
+    }
+    category_counts[None] = sum(category_counts.values())
 
     conn.close()
     g.pop("_database", None)
@@ -316,6 +399,17 @@ def category():
         brands=[dict(r) for r in all_brands],
         storage_options=[dict(r) for r in all_storage],
         ram_options=[dict(r) for r in all_ram],
+        catalogue_page=catalogue_page,
+        category_url=CATALOGUE_PATHS[device_category],
+        catalogue_tabs=[
+            {
+                "label": CATALOGUE_PAGES[key]["heading"],
+                "url": CATALOGUE_PATHS[key],
+                "count": category_counts.get(key, 0),
+                "active": key == device_category,
+            }
+            for key in (None, *DEVICE_CATEGORIES)
+        ],
         filters={
             "brand": brand_filter,
             "min_price": min_price,
@@ -692,14 +786,15 @@ def refresh_price(product_id):
                 result = _check_price(slug, url)
                 if result.get("error") or not result.get("price"):
                     continue
+                offer_title = result.get("title") or offer["title"]
                 conn.execute("""
                     UPDATE offers
                     SET price = ?, in_stock = ?, last_checked = CURRENT_TIMESTAMP,
-                        title = COALESCE(?, title), pta_status = ?
+                        title = COALESCE(?, title), pta_status = ?, warranty = ?, condition = ?
                     WHERE id = ?
                 """, (result["price"], result.get("in_stock", True),
-                      result.get("title"),
-                      classify_pta_status(result.get("title") or offer["title"]),
+                      result.get("title"), classify_pta_status(offer_title),
+                      classify_warranty(offer_title), classify_condition(offer_title),
                       offer["id"]))
                 conn.execute("""
                     INSERT INTO price_history
@@ -793,8 +888,8 @@ def sitemap():
         entries.append((path, updated_at))
 
     for path in (
-        url_for("home"), url_for("category"), url_for("about"),
-        url_for("contact"), url_for("privacy"),
+        url_for("home"), *CATALOGUE_PATHS.values(),
+        url_for("about"), url_for("contact"), url_for("privacy"),
     ):
         add_entry(path)
 

@@ -22,11 +22,14 @@ The database is a **snapshot**, not a live database service. Future price and im
 - Product overviews are generated from cached specifications, current prices, store coverage, price segments, and listing-level PTA status without an AI service or narrative database column.
 - Product pages cross-link reciprocal, same-segment competitor comparisons with current prices and differences; comparison pairs use canonical URLs and appear in the sitemap.
 - Three to five server-rendered product FAQs use current offers, explicit PTA labels, known variants, cached specifications, and price snapshots, with matching FAQPage structured data.
+- Canonical brand aliases and shared model records normalize the catalogue without changing product IDs, slugs, offers, or price history. Offer-level warranty and condition are retained when explicitly stated.
+- `/smartphones`, `/feature-phones`, and `/other-mobile-devices` provide filtered catalogue sections; `/mobiles` remains the all-device page and existing product URLs are unchanged.
 - One scheduled workflow runs at `0 7 * * *` (12:00 PM Pakistan time); Playwright is not required.
 
 ## Project map
 
 - `app.py`: pages, search, comparison, price refresh, health check, SEO metadata, and image enrichment.
+- `catalogue.py`: canonical brand aliases, model grouping, device categories, and offer warranty/condition classification.
 - `product_content.py` and `templates/partials/product_summary.html`: deterministic product-overview context, FAQs, and rendering.
 - `templates/partials/product_comparisons.html`: closest-competitor and neighbouring comparison links.
 - `templates/partials/faqs.html`: expandable product FAQs.

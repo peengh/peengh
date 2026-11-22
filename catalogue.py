@@ -127,7 +127,11 @@ def classify_condition(title):
 
 
 def _strip_brand_prefix(title, brand):
-    aliases = (brand,) + BRAND_ALIASES.get(brand, ())
+    product_lines = {"iphone", "galaxy", "pixel", "redmi", "poco", "xperia", "moto"}
+    aliases = (brand,) + tuple(
+        alias for alias in BRAND_ALIASES.get(brand, ())
+        if normalize_identity(alias) not in product_lines
+    )
     for alias in sorted(set(aliases), key=len, reverse=True):
         match = re.match(r"^\s*{}\b".format(re.escape(alias)), title or "", flags=re.I)
         if match:
@@ -246,10 +250,26 @@ def sync_catalogue_master(conn):
             WHERE id = ?
         """, (title, brand, variant_key, model_id, category, product["id"]))
 
-    for row in conn.execute("SELECT id, brand FROM brands").fetchall():
-        conn.execute("UPDATE product_images SET brand = ? WHERE brand = ?", (row["name"], row["name"]))
     for raw_brand in {product["brand"] for product in products}:
-        conn.execute(
-            "UPDATE product_images SET brand = ? WHERE brand = ?",
-            (canonical_brand(raw_brand), raw_brand),
-        )
+        brand = canonical_brand(raw_brand)
+        if brand == raw_brand:
+            continue
+        images = conn.execute(
+            "SELECT * FROM product_images WHERE brand = ? ORDER BY id", (raw_brand,)
+        ).fetchall()
+        for image in images:
+            duplicate = conn.execute("""
+                SELECT id FROM product_images
+                WHERE brand = ? AND model_key = ?
+                  AND COALESCE(color, '') = COALESCE(?, '')
+                  AND COALESCE(storage_variant, '') = COALESCE(?, '')
+                  AND source = ? AND id != ?
+                LIMIT 1
+            """, (brand, image["model_key"], image["color"], image["storage_variant"],
+                  image["source"], image["id"])).fetchone()
+            if duplicate:
+                conn.execute("DELETE FROM product_images WHERE id = ?", (image["id"],))
+            else:
+                conn.execute(
+                    "UPDATE product_images SET brand = ? WHERE id = ?", (brand, image["id"])
+                )

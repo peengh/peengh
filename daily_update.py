@@ -9,6 +9,13 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from catalogue import (
+    canonical_brand,
+    classify_condition,
+    classify_warranty,
+    model_key,
+    sync_catalogue_master,
+)
 from database import DATABASE, get_db, init_db, seed_retailers, seed_official_images, slugify
 from scrapers.utils import classify_pta_status, parse_ram, parse_storage
 from scrapers.feeds import configured_feeds, fetch_feed
@@ -46,14 +53,6 @@ BRAND_KEYWORDS = [
     ("nothing", "Nothing"),
 ]
 
-COLORS = [
-    "black", "white", "blue", "red", "green", "gold", "silver",
-    "grey", "gray", "purple", "pink", "yellow", "orange", "brown",
-    "beige", "cream", "midnight", "sierra", "alpine", "graphite",
-    "titanium", "phantom", "lavender", "mint", "coral", "aqua",
-    "obsidian", "porcelain", "rose", "navy", "violet", "natural",
-]
-
 RETAILER_SCRAPERS = {
     "telex": ("TeleX", lambda: scrape_telex("smart-phones", limit=250)),
     "mega": ("Mega.pk", lambda: scrape_mega()),
@@ -72,34 +71,14 @@ def extract_brand(title):
     lowered = title.lower()
     for keyword, brand in BRAND_KEYWORDS:
         if re.search(rf'\b{re.escape(keyword)}\b', lowered):
-            return brand
+            return canonical_brand(brand)
     parts = title.split()
-    return parts[0] if parts else "Other"
+    return canonical_brand(parts[0] if parts else "Other")
 
 
 def extract_model_key(title, brand, storage=None, include_storage=True):
-    text = re.sub(rf'\b{re.escape(brand)}\b', ' ', title, flags=re.I)
-    text = re.sub(r'\d+\s*(GB|TB)\s*RAM', ' ', text, flags=re.I)
-    text = re.sub(r'\d+\s*(GB|TB)', ' ', text, flags=re.I)
-    text = re.sub(r'\([^)]*\)', ' ', text)
-    for term in [
-        "OFFICIAL WARRANTY", "OFFICIAL", "NON PTA", "NON-PTA", "PTA",
-        "APPROVED", "DUAL SIM", "SINGLE SIM", "DUAL-SIM", "SINGLE-SIM",
-        "BRAND NEW", "BOX PACKED", "BOXPACKED", "FACTORY UNLOCKED",
-        "UNLOCKED", "USED", "SEALED", "INTERNATIONAL", "LOCAL",
-        "WARRANTY", "PAKISTAN", "STORAGE", "RAM", "WITH", "5G", "4G", "LTE",
-        "PHYSICAL", "ESIM", "E SIM", "NEW",
-    ]:
-        text = re.sub(rf'\b{re.escape(term)}\b', ' ', text, flags=re.I)
-    for color in COLORS:
-        text = re.sub(rf'\b{color}\b', ' ', text, flags=re.I)
-    text = re.sub(r'[^\w\s]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
     capacity = (storage or parse_storage(title)) if include_storage else None
-    key = f"{brand} {text}"
-    if capacity:
-        key = f"{key} {capacity}"
-    return re.sub(r'\s+', ' ', key).strip().upper()
+    return model_key(title, brand, capacity, include_storage)
 
 
 def load_curated_phones():
@@ -252,22 +231,23 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
     """, (product_id, retailer_id)).fetchone()
     values = (
         offer["title"], offer["price"], offer["url"],
-        offer.get("in_stock", True), classify_pta_status(offer["title"]), now, now,
+        offer.get("in_stock", True), classify_pta_status(offer["title"]),
+        classify_warranty(offer["title"]), classify_condition(offer["title"]), now, now,
     )
     if existing:
         offer_id = existing["id"]
         cursor.execute("""
             UPDATE offers
             SET title = ?, price = ?, url = ?, in_stock = ?, pta_status = ?,
-                scraped_at = ?, last_checked = ?
+                warranty = ?, condition = ?, scraped_at = ?, last_checked = ?
             WHERE id = ?
         """, values + (offer_id,))
     else:
         cursor.execute("""
             INSERT INTO offers
                 (product_id, retailer_id, title, price, url, in_stock, pta_status,
-                 scraped_at, last_checked)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 warranty, condition, scraped_at, last_checked)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (product_id, retailer_id) + values)
         offer_id = cursor.lastrowid
 
@@ -360,6 +340,7 @@ def apply_updates(groups, retailers, successful_stores):
             cursor.execute(f"DELETE FROM offers WHERE id IN ({placeholders})", stale_ids)
             for product_id in {row["product_id"] for row in stale_offers}:
                 _update_prices(cursor, product_id)
+        sync_catalogue_master(db)
         db.commit()
     except Exception:
         db.rollback()

@@ -24,7 +24,10 @@
 | Page | URL |
 |------|-----|
 | Home | `/` |
-| Category | `/mobiles` |
+| All devices | `/mobiles` |
+| Smartphones | `/smartphones` |
+| Feature phones | `/feature-phones` |
+| Other mobile devices | `/other-mobile-devices` |
 | Product | `/mobiles/<slug>` |
 | Compare | `/compare/<a>-vs-<b>` |
 | Brand | `/brands/<brand>` |
@@ -63,6 +66,10 @@ Scrapers run daily via GitHub Actions and commit the updated `peengh.db` back to
 # Manual update (local)
 python3 daily_update.py
 ```
+
+### Canonical catalogue master
+
+`catalogue.py` maintains canonical brands, aliases, and shared model records while keeping each RAM/storage variant as a separate product with its existing ID and URL. Products are classified as smartphones, feature phones, or other mobile devices. Retailer offers retain explicit PTA, warranty, and condition labels; unstated values remain `unknown`. The migration and daily updater use the same normalization rules, so scraper spelling variants do not create new brand names.
 
 ### Cached specifications and PTA status
 

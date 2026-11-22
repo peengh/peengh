@@ -269,9 +269,15 @@ def init_db():
     offer_columns = {
         row["name"] for row in cursor.execute("PRAGMA table_info(offers)").fetchall()
     }
-    if "pta_status" not in offer_columns:
-        cursor.execute("ALTER TABLE offers ADD COLUMN pta_status TEXT DEFAULT 'unknown'")
-        print("  [DB] Added pta_status column to offers table")
+    for name in ("pta_status", "warranty", "condition"):
+        if name not in offer_columns:
+            cursor.execute(f"ALTER TABLE offers ADD COLUMN {name} TEXT DEFAULT 'unknown'")
+            print(f"  [DB] Added {name} column to offers table")
+    for offer in cursor.execute("SELECT id, title FROM offers").fetchall():
+        cursor.execute(
+            "UPDATE offers SET warranty = ?, condition = ? WHERE id = ?",
+            (classify_warranty(offer["title"]), classify_condition(offer["title"]), offer["id"]),
+        )
     cursor.execute("""
         UPDATE offers SET pta_status = CASE
             WHEN REPLACE(UPPER(title), '-', ' ') LIKE '%NON PTA%'
@@ -288,6 +294,7 @@ def init_db():
             OR (UPPER(ram) LIKE '%GB' AND CAST(REPLACE(UPPER(ram), 'GB', '') AS INTEGER) > 48)
         )
     """)
+    sync_catalogue_master(conn)
     cursor.execute("""
         UPDATE product_images SET is_active = 0
         WHERE LOWER(image_url) LIKE '%out-of-stock%'
