@@ -7,6 +7,8 @@ import os
 import re
 from datetime import datetime
 
+from catalogue import classify_condition, classify_warranty, sync_catalogue_master
+
 DATABASE = os.environ.get("DATABASE_PATH", "peengh.db")
 
 
@@ -38,6 +40,40 @@ def init_db():
         )
     """)
 
+    # Canonical brands and models — variants and retailer offers link here
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS brands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS brand_aliases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            brand_id INTEGER NOT NULL,
+            alias TEXT NOT NULL,
+            normalized_alias TEXT UNIQUE NOT NULL,
+            FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            brand_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            normalized_key TEXT NOT NULL,
+            device_category TEXT NOT NULL DEFAULT 'smartphones',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP,
+            FOREIGN KEY (brand_id) REFERENCES brands(id) ON DELETE CASCADE,
+            UNIQUE(brand_id, normalized_key)
+        )
+    """)
+
     # Products — canonical items we compare across stores
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS products (
@@ -46,6 +82,8 @@ def init_db():
             brand TEXT NOT NULL,
             slug TEXT UNIQUE NOT NULL,
             match_key TEXT NOT NULL,
+            model_id INTEGER REFERENCES models(id),
+            device_category TEXT NOT NULL DEFAULT 'smartphones',
             image_url TEXT,
             ram TEXT,
             storage TEXT,
@@ -77,6 +115,8 @@ def init_db():
             url TEXT NOT NULL,
             in_stock INTEGER DEFAULT 1,
             pta_status TEXT DEFAULT 'unknown',
+            warranty TEXT DEFAULT 'unknown',
+            condition TEXT DEFAULT 'unknown',
             scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
@@ -206,21 +246,25 @@ def init_db():
         cursor.execute("ALTER TABLE price_history ADD COLUMN offer_id INTEGER REFERENCES offers(id)")
         print("  [DB] Added offer_id column to price_history table")
 
-    spec_columns = {
+    product_columns = {
         "specs_json": "TEXT",
         "specs_source": "TEXT",
         "specs_source_url": "TEXT",
         "specs_updated_at": "TIMESTAMP",
         "specs_status": "TEXT DEFAULT 'missing'",
         "specs_error": "TEXT",
+        "model_id": "INTEGER REFERENCES models(id)",
+        "device_category": "TEXT NOT NULL DEFAULT 'smartphones'",
     }
     existing_columns = {
         row["name"] for row in cursor.execute("PRAGMA table_info(products)").fetchall()
     }
-    for name, definition in spec_columns.items():
+    for name, definition in product_columns.items():
         if name not in existing_columns:
             cursor.execute(f"ALTER TABLE products ADD COLUMN {name} {definition}")
             print(f"  [DB] Added {name} column to products table")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_model ON products(model_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_category ON products(device_category)")
 
     offer_columns = {
         row["name"] for row in cursor.execute("PRAGMA table_info(offers)").fetchall()
