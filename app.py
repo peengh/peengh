@@ -13,6 +13,14 @@ from catalogue import DEVICE_CATEGORIES, classify_condition, classify_warranty
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
+from smart_finder import (
+    BRAND_OPTIONS,
+    BUDGET_OPTIONS,
+    PRIORITY_OPTIONS,
+    USE_OPTIONS,
+    parse_preferences,
+    rank_phones,
+)
 from product_content import (
     ACCESSORY_TITLE_SQL,
     build_comparison_context,
@@ -422,6 +430,57 @@ def device_catalogue(device_category):
 
 
 # ---------------------------------------------------------------------------
+# Smart Finder
+# ---------------------------------------------------------------------------
+
+@app.route("/smart-finder")
+def smart_finder():
+    preferences = parse_preferences(request.args)
+    results = {"all": [], "approved": [], "non_pta": []}
+    if preferences["submitted"]:
+        conn = get_db_conn()
+        products = [dict(row) for row in conn.execute("""
+            SELECT p.*,
+                   MIN(CASE WHEN o.pta_status = 'approved' THEN o.price END) AS approved_price,
+                   MIN(CASE WHEN o.pta_status = 'non_pta' THEN o.price END) AS non_pta_price,
+                   MIN(CASE WHEN o.pta_status = 'unknown' THEN o.price END) AS unknown_price,
+                   COUNT(DISTINCT o.retailer_id) AS store_count
+            FROM products p
+            JOIN offers o ON o.product_id = p.id
+            WHERE p.device_category = 'smartphones'
+              AND o.in_stock = 1 AND o.price > 0
+            GROUP BY p.id
+        """).fetchall()]
+        conn.close()
+        g.pop("_database", None)
+        results = rank_phones(products, preferences)
+        enriched = {}
+        for group in results.values():
+            for index, product in enumerate(group):
+                if product["id"] not in enriched:
+                    enriched[product["id"]] = enrich_products_with_images([product])[0]
+                group[index] = enriched[product["id"]]
+            if group:
+                best = group[0]
+                for product in group:
+                    product["compare_url"] = None
+                    if product["id"] != best["id"]:
+                        slug_a, slug_b = sorted((best["slug"], product["slug"]))
+                        product["compare_url"] = url_for("compare", slug_a=slug_a, slug_b=slug_b)
+
+    return render_template(
+        "smart_finder.html",
+        preferences=preferences,
+        results=results,
+        has_results=any(results.values()),
+        budget_options=BUDGET_OPTIONS,
+        priority_options=PRIORITY_OPTIONS,
+        brand_options=BRAND_OPTIONS,
+        use_options=USE_OPTIONS,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Product detail
 # ---------------------------------------------------------------------------
 
@@ -793,7 +852,7 @@ def refresh_price(product_id):
                         title = COALESCE(?, title), pta_status = ?, warranty = ?, condition = ?
                     WHERE id = ?
                 """, (result["price"], result.get("in_stock", True),
-                      result.get("title"), classify_pta_status(offer_title),
+                      result.get("title"), classify_pta_status(offer_title, offer["retailer_slug"]),
                       classify_warranty(offer_title), classify_condition(offer_title),
                       offer["id"]))
                 conn.execute("""
@@ -888,7 +947,7 @@ def sitemap():
         entries.append((path, updated_at))
 
     for path in (
-        url_for("home"), *CATALOGUE_PATHS.values(),
+        url_for("home"), url_for("smart_finder"), *CATALOGUE_PATHS.values(),
         url_for("about"), url_for("contact"), url_for("privacy"),
     ):
         add_entry(path)

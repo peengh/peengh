@@ -231,7 +231,7 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
     """, (product_id, retailer_id)).fetchone()
     values = (
         offer["title"], offer["price"], offer["url"],
-        offer.get("in_stock", True), classify_pta_status(offer["title"]),
+        offer.get("in_stock", True), classify_pta_status(offer["title"], offer.get("store")),
         classify_warranty(offer["title"]), classify_condition(offer["title"]), now, now,
     )
     if existing:

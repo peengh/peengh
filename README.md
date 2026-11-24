@@ -25,6 +25,7 @@
 |------|-----|
 | Home | `/` |
 | All devices | `/mobiles` |
+| Smart Finder | `/smart-finder` |
 | Smartphones | `/smartphones` |
 | Feature phones | `/feature-phones` |
 | Other mobile devices | `/other-mobile-devices` |
@@ -91,7 +92,11 @@ python3 specs_update.py --retry-errors
 
 Use Python 3.11. On GitHub, open **Actions → Specification Backfill → Run workflow**. Use the default `25` for a small run or `0` for all eligible products. The workflow commits the updated database and shares its concurrency group with the daily price update.
 
-PTA status is stored per retailer offer. Only explicit title wording produces `approved` or `non_pta`; unspecified listings remain `unknown`. Registration charges are not inferred.
+PTA status is stored per retailer offer. Explicit non-PTA title wording always takes precedence. PriceOye listings default to `approved` based on the retailer's stated policy; other unspecified listings remain `unknown`. Registration charges are not inferred or added to prices because they depend on the device, registration route, and current official tax table.
+
+### Peengh Smart Finder
+
+`/smart-finder` accepts a plain-language request and guided budget, priority, storage, brand, use-case, and PTA preferences. `smart_finder.py` ranks current in-stock smartphones from their retailer prices and cached hardware specifications, keeps only one variant per model in each shortlist, explains each match, and links alternatives into the existing comparison pages. Approved and non-PTA offers can be ranked separately. The ranking does not use an AI service or hands-on quality claims; missing specifications and software-update limitations are disclosed.
 
 ### Automated product overviews
 

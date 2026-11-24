@@ -140,7 +140,7 @@ def build_product_faqs(product, specifications, offers, history):
         approved_high = max(offer["price"] for offer in approved)
         cheapest_approved = [offer for offer in approved if offer["price"] == approved_low]
         sentences = [
-            "Current listings explicitly marked PTA-approved start at {} at {}.".format(
+            "Current PTA-approved listings start at {} at {}.".format(
                 _format_price(approved_low), _retailer_names(cheapest_approved)
             )
         ]

@@ -189,11 +189,13 @@ def parse_ram(title):
     return None
 
 
-def classify_pta_status(title):
+def classify_pta_status(title, retailer_slug=None):
     normalized = re.sub(r"[\s-]+", " ", str(title or "").upper())
     if re.search(r"\bNON ?PTA\b|\bPTA (?:NOT APPROVED|UNAPPROVED)\b", normalized):
         return "non_pta"
     if re.search(r"\bPTA APPROVED\b", normalized):
+        return "approved"
+    if retailer_slug in {"priceoye", "priceoye.pk"}:
         return "approved"
     return "unknown"
 

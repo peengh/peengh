@@ -1,0 +1,44 @@
+{% if finder_products %}
+<section class="mb-6">
+  <h2 class="text-xl font-bold text-peengh-navy mb-1">{{ finder_title }}</h2>
+  <p class="text-sm text-gray-500 mb-4">Ranked from your preferences, current in-stock prices, and available specifications.</p>
+  <div class="space-y-4">
+    {% for phone in finder_products %}
+    <article class="bg-white rounded-2xl border {% if loop.first %}border-peengh-teal/40 shadow-md{% else %}border-gray-100{% endif %} p-4 sm:p-5">
+      <div class="flex flex-col sm:flex-row gap-4">
+        <a href="/mobiles/{{ phone.slug }}" class="w-full sm:w-36 flex-shrink-0 aspect-square bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+          <img src="{{ phone.image_url or product_placeholder }}" alt="{{ phone.title }}" loading="lazy" class="w-full h-full object-contain" data-fallbacks="{{ phone.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
+        </a>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <span class="text-xs font-bold uppercase tracking-wide {% if loop.first %}text-peengh-teal{% else %}text-gray-400{% endif %}">#{{ loop.index }} {% if loop.first %}Best match{% else %}Alternative{% endif %}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold {% if phone.pta_status == 'approved' %}bg-green-50 text-green-700{% elif phone.pta_status == 'non_pta' %}bg-amber-50 text-amber-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+              {% if phone.pta_status == 'approved' %}PTA approved{% elif phone.pta_status == 'non_pta' %}Non-PTA{% else %}PTA not specified{% endif %}
+            </span>
+          </div>
+          <h3 class="text-lg font-bold text-peengh-navy"><a href="/mobiles/{{ phone.slug }}" class="hover:text-peengh-teal">{{ phone.title }}</a></h3>
+          <p class="text-2xl font-extrabold text-peengh-teal mt-1">Rs {{ "{:,}".format(phone.price) }}</p>
+          <h4 class="text-xs font-bold uppercase tracking-wide text-gray-500 mt-4 mb-2">Why it fits</h4>
+          <ul class="space-y-1.5 text-sm text-gray-600">
+            {% for reason in phone.reasons %}
+            <li class="flex gap-2"><svg class="w-4 h-4 mt-0.5 flex-shrink-0 text-peengh-teal" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span>{{ reason }}</span></li>
+            {% endfor %}
+          </ul>
+          {% if phone.cautions %}
+          <div class="mt-3 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            {% for caution in phone.cautions %}<p>{{ caution }}</p>{% endfor %}
+          </div>
+          {% endif %}
+          <div class="flex flex-wrap gap-2 mt-4">
+            <a href="/mobiles/{{ phone.slug }}" class="inline-flex items-center justify-center bg-peengh-navy text-white text-sm font-semibold px-4 py-2.5 rounded-lg tap-target hover:bg-peengh-amber transition">View store prices</a>
+            {% if phone.compare_url %}
+            <a href="{{ phone.compare_url }}" class="inline-flex items-center justify-center border border-gray-200 text-peengh-navy text-sm font-semibold px-4 py-2.5 rounded-lg tap-target hover:border-peengh-teal transition">Compare with #1</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

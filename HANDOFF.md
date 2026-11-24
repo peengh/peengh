@@ -24,12 +24,16 @@ The database is a **snapshot**, not a live database service. Future price and im
 - Three to five server-rendered product FAQs use current offers, explicit PTA labels, known variants, cached specifications, and price snapshots, with matching FAQPage structured data.
 - Canonical brand aliases and shared model records normalize the catalogue without changing product IDs, slugs, offers, or price history. Offer-level warranty and condition are retained when explicitly stated.
 - `/smartphones`, `/feature-phones`, and `/other-mobile-devices` provide filtered catalogue sections; `/mobiles` remains the all-device page and existing product URLs are unchanged.
+- PriceOye offers default to PTA-approved unless a title explicitly says non-PTA. Peengh does not estimate PTA registration tax without a device-specific, dated official tax table.
+- `/smart-finder` turns plain-language and guided preferences into ranked, model-diverse shortlists with factual reasons, limitations, current prices, and comparison links. Approved and non-PTA lists remain separate when requested.
+- Product pages place current store prices before the longer overview, specifications, history, comparisons, and FAQs.
 - One scheduled workflow runs at `0 7 * * *` (12:00 PM Pakistan time); Playwright is not required.
 
 ## Project map
 
 - `app.py`: pages, search, comparison, price refresh, health check, SEO metadata, and image enrichment.
 - `catalogue.py`: canonical brand aliases, model grouping, device categories, and offer warranty/condition classification.
+- `smart_finder.py` and `templates/smart_finder.html`: preference parsing, transparent ranking, shortlist explanations, and guided finder interface.
 - `product_content.py` and `templates/partials/product_summary.html`: deterministic product-overview context, FAQs, and rendering.
 - `templates/partials/product_comparisons.html`: closest-competitor and neighbouring comparison links.
 - `templates/partials/faqs.html`: expandable product FAQs.
@@ -91,11 +95,11 @@ Store feed URLs and credentials in **GitHub → Settings → Secrets and variabl
 ## Verification
 
 ```bash
-python -m py_compile app.py daily_update.py specs_update.py database.py image_resolver.py scrapers/*.py seed_curated.py
+python -m py_compile app.py catalogue.py smart_finder.py daily_update.py specs_update.py database.py image_resolver.py scrapers/*.py seed_curated.py
 python - <<'PY'
 from app import app
 client = app.test_client()
-for path in ('/health', '/', '/mobiles'):
+for path in ('/health', '/', '/mobiles', '/smart-finder'):
     response = client.get(path)
     print(path, response.status_code)
     assert response.status_code == 200

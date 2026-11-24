@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Peengh Smart Finder — Find the Right Phone for Your Budget{% endblock %}
+{% block meta_desc %}Answer a few simple questions and get a ranked phone shortlist based on your budget, camera, battery, storage, performance, and PTA preferences in Pakistan.{% endblock %}
+
+{% block content %}
+<div class="max-w-[1050px] mx-auto px-4 py-6 sm:py-10">
+  <div class="mb-6">
+    <span class="inline-block text-xs font-bold uppercase tracking-wider text-peengh-teal bg-peengh-teal/10 px-3 py-1 rounded-full mb-3">Peengh Smart Finder</span>
+    <h1 class="text-3xl sm:text-4xl font-extrabold text-peengh-navy">Let's find your phone.</h1>
+    <p class="text-gray-500 mt-2">Tell us what you need in plain language. No specification knowledge required.</p>
+  </div>
+
+  <form method="get" action="/smart-finder" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <input type="hidden" name="find" value="1">
+    <section class="p-5 sm:p-7 border-b border-gray-100">
+      <label for="needs" class="block text-lg font-bold text-peengh-navy mb-2">Describe your ideal phone</label>
+      <textarea id="needs" name="needs" rows="3" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-peengh-teal" placeholder="For example: My budget is Rs 80,000. I want a good camera, excellent battery life, 256GB storage and a phone that will last at least three years.">{{ preferences.needs }}</textarea>
+      <p class="text-xs text-gray-400 mt-2">You can use this sentence on its own or fine-tune your answers below.</p>
+    </section>
+
+    <section class="p-5 sm:p-7 border-b border-gray-100">
+      <h2 class="text-lg font-bold text-peengh-navy mb-1"><span class="text-peengh-teal mr-2">1.</span>What's your budget?</h2>
+      <p class="text-sm text-gray-500 mb-4">We will show phones at or below the upper amount.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {% for value, label in budget_options %}
+        <label class="cursor-pointer">
+          <input type="radio" name="budget" value="{{ value }}" class="peer sr-only" {% if preferences.budget_max == value %}checked{% endif %}>
+          <span class="block px-4 py-3 rounded-xl border border-gray-200 text-sm font-medium peer-checked:border-peengh-teal peer-checked:bg-peengh-teal/10 peer-checked:text-peengh-navy transition">{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="p-5 sm:p-7 border-b border-gray-100">
+      <h2 class="text-lg font-bold text-peengh-navy mb-1"><span class="text-peengh-teal mr-2">2.</span>What matters most?</h2>
+      <p class="text-sm text-gray-500 mb-4">Choose one or more priorities.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {% for value, label in priority_options.items() %}
+        <label class="cursor-pointer">
+          <input type="checkbox" name="priorities" value="{{ value }}" class="peer sr-only" {% if value in preferences.priorities %}checked{% endif %}>
+          <span class="block px-4 py-3 rounded-xl border border-gray-200 text-sm font-medium peer-checked:border-peengh-teal peer-checked:bg-peengh-teal/10 peer-checked:text-peengh-navy transition">{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="p-5 sm:p-7 border-b border-gray-100">
+      <h2 class="text-lg font-bold text-peengh-navy mb-4"><span class="text-peengh-teal mr-2">3.</span>Storage, brand, and everyday use</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <label class="text-sm font-semibold text-gray-700">Minimum storage
+          <select name="storage" class="mt-2 w-full bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-peengh-teal">
+            <option value="">Any storage</option>
+            {% for value in (128, 256, 512) %}<option value="{{ value }}" {% if preferences.storage == value %}selected{% endif %}>{{ value }}GB or more</option>{% endfor %}
+          </select>
+        </label>
+        <label class="text-sm font-semibold text-gray-700">Preferred brand
+          <select name="brand" class="mt-2 w-full bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-peengh-teal">
+            {% for value, label in brand_options.items() %}<option value="{{ value }}" {% if preferences.brand == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="text-sm font-semibold text-gray-700">Primary use
+          <select name="use" class="mt-2 w-full bg-white border border-gray-200 rounded-xl px-3 py-3 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-peengh-teal">
+            {% for value, label in use_options.items() %}<option value="{{ value }}" {% if preferences.use == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="p-5 sm:p-7 border-b border-gray-100">
+      <h2 class="text-lg font-bold text-peengh-navy mb-1"><span class="text-peengh-teal mr-2">4.</span>PTA preference</h2>
+      <p class="text-sm text-gray-500 mb-4">Non-PTA prices do not include registration tax, so they are never presented as PTA-approved totals.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {% for value, label, description in [('approved', 'PTA approved only', 'Compare approved listings'), ('any', 'Non-PTA acceptable', 'Show the cheapest eligible offer'), ('both', 'Show both separately', 'Rank approved and non-PTA lists')] %}
+        <label class="cursor-pointer">
+          <input type="radio" name="pta" value="{{ value }}" class="peer sr-only" {% if preferences.pta == value %}checked{% endif %}>
+          <span class="block h-full px-4 py-3 rounded-xl border border-gray-200 peer-checked:border-peengh-teal peer-checked:bg-peengh-teal/10 transition">
+            <span class="block text-sm font-semibold text-peengh-navy">{{ label }}</span>
+            <span class="block text-xs text-gray-500 mt-1">{{ description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <div class="p-5 sm:p-7 bg-gray-50">
+      <button type="submit" class="w-full bg-peengh-navy text-white rounded-xl px-6 py-4 text-base font-bold hover:bg-peengh-teal transition tap-target">Find my phone <span aria-hidden="true">→</span></button>
+    </div>
+  </form>
+
+  {% if preferences.submitted %}
+  <div id="results" class="mt-8">
+    {% if has_results %}
+    <div class="bg-peengh-teal/10 border border-peengh-teal/20 rounded-xl p-4 mb-5">
+      <h2 class="font-bold text-peengh-navy">Your ranked shortlist</h2>
+      <p class="text-sm text-gray-600 mt-1">These are data-driven matches, not sponsored placements. Review the reasons and trade-offs before choosing.</p>
+    </div>
+      {% if results.all %}
+        {% with finder_products = results.all, finder_title = 'Best matches for you' %}{% include "partials/finder_results.html" %}{% endwith %}
+      {% else %}
+        {% if results.approved %}{% with finder_products = results.approved, finder_title = 'PTA-approved matches' %}{% include "partials/finder_results.html" %}{% endwith %}{% endif %}
+        {% if results.non_pta %}{% with finder_products = results.non_pta, finder_title = 'Non-PTA matches — registration cost not included' %}{% include "partials/finder_results.html" %}{% endwith %}{% endif %}
+      {% endif %}
+    <p class="text-xs text-gray-500 leading-relaxed bg-white rounded-xl border border-gray-100 p-4">Rankings use listed hardware and current retailer data, not hands-on camera, battery, or gaming tests. Megapixels and battery capacity alone do not guarantee real-world quality. Confirm specifications, PTA status, IMEI, and any applicable DIRBS charges with the retailer before buying.</p>
+    {% else %}
+    <div class="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+      <h2 class="text-xl font-bold text-peengh-navy">No exact matches yet</h2>
+      <p class="text-sm text-gray-500 mt-2">Try a higher budget, less storage, another brand, or allow non-PTA offers.</p>
+      <a href="#needs" class="inline-block mt-4 text-sm font-semibold text-peengh-teal hover:underline">Change my preferences</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

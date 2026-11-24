@@ -288,6 +288,12 @@ def init_db():
     """)
 
     cursor.execute("""
+        UPDATE offers SET pta_status = 'approved'
+        WHERE pta_status = 'unknown' AND retailer_id IN (
+            SELECT id FROM retailers WHERE slug IN ('priceoye', 'priceoye.pk')
+        )
+    """)
+    cursor.execute("""
         UPDATE products SET ram = ''
         WHERE ram IS NOT NULL AND (
             UPPER(ram) LIKE '%TB'
