@@ -18,6 +18,8 @@ def is_usable_product_image(image_url):
     if not image_url:
         return False
     normalized = unquote(str(image_url)).lower()
+    if normalized.rstrip("/") in {"https://images.priceoye.pk", "http://images.priceoye.pk"}:
+        return False
     return not any(marker in normalized for marker in NON_PRODUCT_IMAGE_MARKERS)
 
 

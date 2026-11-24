@@ -14,7 +14,7 @@ The database is a **snapshot**, not a live database service. Future price and im
 - On-demand price refresh checks each retailer once and reuses the returned image.
 - SQLite timestamps are normalized before comparison with aware UTC timestamps.
 - Image selection guards model, colour, and storage; unusable out-of-stock/no-image graphics are rejected.
-- Templates try multiple image URLs before showing the neutral product placeholder.
+- Templates try multiple image URLs before showing the neutral product placeholder. Exact-model photos for Redmi 13, Nokia 106, Nokia 150 2G, and Nokia 5310 2G are hosted locally under `static/images/products/` to avoid retailer hotlink failures.
 - PriceOye can recover a real product-page image when its catalogue-card image is unusable. This applies generally, not only to the originally reported examples.
 - Public listings require a positive, in-stock offer; unpriced direct product pages still render.
 - Optional retailer-supplied JSON/CSV feeds are supported through `STORE_FEEDS`.
@@ -23,7 +23,7 @@ The database is a **snapshot**, not a live database service. Future price and im
 - Product pages cross-link reciprocal, same-segment competitor comparisons with current prices and differences; comparison pairs use canonical URLs and appear in the sitemap.
 - Three to five server-rendered product FAQs use current offers, explicit PTA labels, known variants, cached specifications, and price snapshots, with matching FAQPage structured data.
 - Canonical brand aliases and shared model records normalize the catalogue without changing product IDs, slugs, offers, or price history. Offer-level warranty and condition are retained when explicitly stated.
-- `/smartphones`, `/feature-phones`, and `/other-mobile-devices` provide filtered catalogue sections; `/mobiles` remains the all-device page and existing product URLs are unchanged.
+- `/smartphones` and `/feature-phones` provide filtered catalogue sections; `/mobiles` remains the complete phone catalogue. Non-phone accessories are removed during migration and blocked from future daily imports.
 - PriceOye offers default to PTA-approved unless a title explicitly says non-PTA. Peengh does not estimate PTA registration tax without a device-specific, dated official tax table.
 - `/smart-finder` turns plain-language and guided preferences into ranked, model-diverse shortlists with factual reasons, limitations, current prices, and comparison links. Approved and non-PTA lists remain separate when requested.
 - Product pages place current store prices before the longer overview, specifications, history, comparisons, and FAQs.

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, g
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from catalogue import DEVICE_CATEGORIES, classify_condition, classify_warranty
+from catalogue import classify_condition, classify_warranty
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
@@ -270,13 +270,6 @@ CATALOGUE_PAGES = {
         "singular": "feature phone",
         "plural": "feature phones",
     },
-    "other_devices": {
-        "title": "Other Mobile Device Prices in Pakistan | Peengh",
-        "heading": "Other Mobile Devices",
-        "description": "Compare prices for mobile accessories and other mobile devices from Pakistani retailers on Peengh.",
-        "singular": "device",
-        "plural": "devices",
-    },
 }
 
 
@@ -284,7 +277,6 @@ CATALOGUE_PATHS = {
     None: "/mobiles",
     "smartphones": "/smartphones",
     "feature_phones": "/feature-phones",
-    "other_devices": "/other-mobile-devices",
 }
 
 
@@ -301,11 +293,6 @@ def smartphone_category():
 @app.route("/feature-phones")
 def feature_phone_category():
     return device_catalogue("feature_phones")
-
-
-@app.route("/other-mobile-devices")
-def other_device_category():
-    return device_catalogue("other_devices")
 
 
 def device_catalogue(device_category):
@@ -416,7 +403,7 @@ def device_catalogue(device_category):
                 "count": category_counts.get(key, 0),
                 "active": key == device_category,
             }
-            for key in (None, *DEVICE_CATEGORIES)
+            for key in (None, "smartphones", "feature_phones")
         ],
         filters={
             "brand": brand_filter,

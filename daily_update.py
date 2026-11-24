@@ -35,7 +35,7 @@ STRICT_NON_PHONE = [
     "playstation", "xbox", "nintendo", "gaming console",
     "dslr", "camera ", "camcorder", "projector",
     "tablet ", "ipad ", "tab ", "smart watch", "smartwatch",
-    "fitness band", "earbuds",
+    "fitness band", "earbuds", "adapter", "charging cable",
 ]
 
 BRAND_KEYWORDS = [

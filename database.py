@@ -301,6 +301,7 @@ def init_db():
         )
     """)
     sync_catalogue_master(conn)
+    cursor.execute("DELETE FROM products WHERE device_category = 'other_devices'")
     cursor.execute("""
         UPDATE product_images SET is_active = 0
         WHERE LOWER(image_url) LIKE '%out-of-stock%'
@@ -312,6 +313,7 @@ def init_db():
            OR LOWER(image_url) LIKE '%no-image%'
            OR LOWER(image_url) LIKE '%no_image%'
            OR LOWER(image_url) LIKE '%image-unavailable%'
+           OR LOWER(RTRIM(image_url, '/')) IN ('https://images.priceoye.pk', 'http://images.priceoye.pk')
     """)
     cursor.execute("""
         UPDATE products SET image_url = ''
@@ -324,6 +326,7 @@ def init_db():
            OR LOWER(image_url) LIKE '%no-image%'
            OR LOWER(image_url) LIKE '%no_image%'
            OR LOWER(image_url) LIKE '%image-unavailable%'
+           OR LOWER(RTRIM(image_url, '/')) IN ('https://images.priceoye.pk', 'http://images.priceoye.pk')
     """)
     cursor.execute("""
         DELETE FROM product_images
@@ -390,13 +393,21 @@ def seed_official_images():
         ("Samsung", "S24 ULTRA", "Titanium Black", "256GB",
          "https://images.samsung.com/pk/smartphones/galaxy-s24-ultra/images/galaxy-s24-ultra-highlights-color-titanium-black-back-mo.jpg",
          "samsung_official", 95),
+        ("Nokia", "106", None, None,
+         "/static/images/products/nokia-106.jpg", "peengh_curated", 100),
+        ("Nokia", "150 2G", None, None,
+         "/static/images/products/nokia-150-2g-2023.jpg", "peengh_curated", 100),
+        ("Nokia", "5310 2G", None, None,
+         "/static/images/products/nokia-5310-2g-2024.jpg", "peengh_curated", 100),
+        ("Xiaomi", "REDMI 13", None, None,
+         "/static/images/products/xiaomi-redmi-13.webp", "peengh_curated", 100),
     ]
 
     cursor.execute("""
         UPDATE product_images SET is_active = 0
         WHERE source IN (
             'samsung_official', 'apple_official', 'xiaomi_official',
-            'infinix_official', 'tecno_official', 'realme_official'
+            'infinix_official', 'tecno_official', 'realme_official', 'peengh_curated'
         )
     """)
     for brand, model_key, color, storage, url, source, confidence in official_images:
@@ -412,6 +423,17 @@ def seed_official_images():
                 expires_at = datetime('now', '+90 days'),
                 is_active = 1
         """, (brand, model_key, color, storage, url, source, confidence))
+        if source == "peengh_curated":
+            product_slugs = {
+                ("Nokia", "106"): "nokia-106",
+                ("Nokia", "150 2G"): "nokia-150-2g-2023",
+                ("Nokia", "5310 2G"): "nokia-5310-2g-2024",
+                ("Xiaomi", "REDMI 13"): "xiaomi-redmi-13",
+            }
+            cursor.execute(
+                "UPDATE products SET image_url = ? WHERE slug = ?",
+                (url, product_slugs[(brand, model_key)]),
+            )
 
     conn.commit()
     conn.close()
