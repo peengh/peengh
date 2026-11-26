@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ product.title }} Price in Pakistan{% if store_count %} — Compare {{ store_count }} Store{{ 's' if store_count != 1 else '' }}{% endif %} | Peengh{% endblock %}
-{% block meta_desc %}{% if product.lowest_price %}{{ product.title }} price in Pakistan starts at Rs {{ "{:,}".format(product.lowest_price) }}. Compare prices from {{ store_count }} store{{ 's' if store_count != 1 else '' }} on Peengh.{% else %}View {{ product.title }} specifications and check the latest prices from Pakistani retailers on Peengh.{% endif %}{% endblock %}
+{% block title %}{{ product.title }} Price in Pakistan{% if store_count > 1 %} — Compare {{ store_count }} Same-Category Prices{% elif store_count == 1 %} — 1 Store Price{% endif %} | Peengh{% endblock %}
+{% block meta_desc %}{% if product.lowest_price %}{{ product.title }} {{ pta_label(product.price_pta_status).lower() }} price in Pakistan starts at Rs {{ "{:,}".format(product.lowest_price) }} from {{ store_count }} store{{ 's' if store_count != 1 else '' }}.{% if store_count > 1 %} Compare same-category store prices on Peengh.{% endif %}{% else %}View {{ product.title }} specifications and check the latest prices from Pakistani retailers on Peengh.{% endif %}{% endblock %}
 {% block og_type %}product{% endblock %}
 {% block og_image %}{{ absolute_url(product.image_url or url_for('static', filename='images/logo-lockup.png')) }}{% endblock %}
 
@@ -50,7 +50,7 @@
             <!-- Lowest Price Box -->
             <div class="bg-peengh-teal/10 rounded-xl p-4 inline-block sm:block">
               {% if product.lowest_price %}
-              <p class="text-xs text-gray-500 mb-1">Lowest Price</p>
+              <p class="text-xs text-gray-500 mb-1">Lowest price · {{ pta_label(product.price_pta_status) }}</p>
               <div class="flex items-baseline gap-2 justify-center sm:justify-start">
                 <span class="text-2xl sm:text-3xl font-extrabold text-peengh-teal">
                   Rs {{ "{:,}".format(product.lowest_price) }}
@@ -103,7 +103,7 @@
       <!-- Price History Chart -->
       {% if history_json and history_json != '{}' %}
       <div class="mt-4 bg-white rounded-2xl border border-gray-100 p-4 sm:p-6">
-        <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-4">Price History (30 Days)</h2>
+        <h2 class="text-base sm:text-lg font-bold text-peengh-navy mb-4">Price History (30 Days) · {{ pta_label(product.price_pta_status) }}</h2>
         <div class="h-64 sm:h-72">
           <canvas id="priceChart"></canvas>
         </div>
@@ -139,13 +139,13 @@
 </div>
 
 <!-- Mobile Sticky Bottom Bar -->
-{% if offers %}
+{% if primary_offer %}
 <div class="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 z-40 flex items-center justify-between shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
   <div>
-    <p class="text-[10px] text-gray-500">Lowest Price</p>
+    <p class="text-[10px] text-gray-500">{{ pta_label(product.price_pta_status) }}</p>
     <p class="text-lg font-extrabold text-peengh-teal">Rs {{ "{:,}".format(product.lowest_price) if product.lowest_price else "N/A" }}</p>
   </div>
-  <a href="{{ offers[0].url }}" target="_blank" rel="noopener" class="bg-peengh-navy text-white px-5 py-2.5 rounded-xl text-sm font-semibold tap-target hover:bg-peengh-amber transition">
+  <a href="{{ primary_offer.url }}" target="_blank" rel="noopener" class="bg-peengh-navy text-white px-5 py-2.5 rounded-xl text-sm font-semibold tap-target hover:bg-peengh-amber transition">
     Go to Store
   </a>
 </div>

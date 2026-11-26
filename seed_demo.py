@@ -7,6 +7,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import get_db, init_db, seed_retailers, slugify
+from pricing import refresh_all_product_price_summaries
 from datetime import datetime, timedelta
 
 
@@ -152,6 +153,7 @@ def seed_demo_data():
                 VALUES (?, ?, ?, ?)
             """, (pid, retailers["mega"], price_mega, date))
 
+    refresh_all_product_price_summaries(conn)
     conn.commit()
     conn.close()
     print(f"Seeded {len(demo_products)} demo products with offers and price history!")

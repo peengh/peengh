@@ -18,6 +18,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Local source caches
+.cache/
+
 # Local DB backups
 *.db.bak
 *.db-journal

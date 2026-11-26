@@ -5,9 +5,12 @@ SQLite schema with all tables for product matching, price tracking, and refresh 
 import sqlite3
 import os
 import re
+import json
 from datetime import datetime
 
 from catalogue import classify_condition, classify_warranty, sync_catalogue_master
+from pricing import refresh_all_product_price_summaries
+from specification_quality import is_usable_chipset
 
 DATABASE = os.environ.get("DATABASE_PATH", "peengh.db")
 
@@ -96,8 +99,11 @@ def init_db():
             specs_updated_at TIMESTAMP,
             specs_status TEXT DEFAULT 'missing',
             specs_error TEXT,
+            authentic_checked_at TIMESTAMP,
             lowest_price INTEGER,
             highest_price INTEGER,
+            price_pta_status TEXT NOT NULL DEFAULT 'unknown',
+            price_offer_count INTEGER NOT NULL DEFAULT 0,
             view_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -132,6 +138,7 @@ def init_db():
             product_id INTEGER NOT NULL,
             retailer_id INTEGER NOT NULL,
             offer_id INTEGER,
+            pta_status TEXT NOT NULL DEFAULT 'unknown',
             price INTEGER NOT NULL,
             date DATE NOT NULL,
             FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
@@ -246,6 +253,18 @@ def init_db():
         cursor.execute("ALTER TABLE price_history ADD COLUMN offer_id INTEGER REFERENCES offers(id)")
         print("  [DB] Added offer_id column to price_history table")
 
+    try:
+        cursor.execute("SELECT pta_status FROM price_history LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE price_history ADD COLUMN pta_status TEXT NOT NULL DEFAULT 'unknown'")
+        print("  [DB] Added pta_status column to price_history table")
+    cursor.execute("""
+        UPDATE price_history SET pta_status = COALESCE((
+            SELECT o.pta_status FROM offers o WHERE o.id = price_history.offer_id
+        ), 'unknown')
+        WHERE pta_status IS NULL OR pta_status = '' OR pta_status = 'unknown'
+    """)
+
     product_columns = {
         "specs_json": "TEXT",
         "specs_source": "TEXT",
@@ -253,8 +272,11 @@ def init_db():
         "specs_updated_at": "TIMESTAMP",
         "specs_status": "TEXT DEFAULT 'missing'",
         "specs_error": "TEXT",
+        "authentic_checked_at": "TIMESTAMP",
         "model_id": "INTEGER REFERENCES models(id)",
         "device_category": "TEXT NOT NULL DEFAULT 'smartphones'",
+        "price_pta_status": "TEXT NOT NULL DEFAULT 'unknown'",
+        "price_offer_count": "INTEGER NOT NULL DEFAULT 0",
     }
     existing_columns = {
         row["name"] for row in cursor.execute("PRAGMA table_info(products)").fetchall()
@@ -265,6 +287,7 @@ def init_db():
             print(f"  [DB] Added {name} column to products table")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_model ON products(model_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_category ON products(device_category)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_price_status ON products(price_pta_status)")
 
     offer_columns = {
         row["name"] for row in cursor.execute("PRAGMA table_info(offers)").fetchall()
@@ -344,6 +367,26 @@ def init_db():
             COALESCE(storage_variant, ''), source
         )
     """)
+
+    for row in cursor.execute(
+        "SELECT id, specs_json FROM products WHERE specs_json IS NOT NULL AND specs_json != ''"
+    ).fetchall():
+        try:
+            specifications = json.loads(row["specs_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if (
+            not isinstance(specifications, dict)
+            or "chipset" not in specifications
+            or is_usable_chipset(specifications.get("chipset"))
+        ):
+            continue
+        specifications.pop("chipset", None)
+        cursor.execute(
+            "UPDATE products SET specs_json = ? WHERE id = ?",
+            (json.dumps(specifications, ensure_ascii=False, sort_keys=True), row["id"]),
+        )
+    refresh_all_product_price_summaries(conn)
 
     conn.commit()
     conn.close()

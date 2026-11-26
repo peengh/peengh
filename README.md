@@ -73,7 +73,7 @@ python3 daily_update.py
 
 ### Cached specifications and PTA status
 
-`specs_update.py` imports specifications from exact retailer product URLs, validates the model and variant, and caches the results in `peengh.db`. It commits after each product, skips fresh cache entries, and retries failed products after one day. It is separate from the daily price workflow.
+`specs_update.py` tries exact 91mobiles and GSMArena product matches before using exact retailer URLs, validates the model and variant, and caches specifications and images locally. Use `--provider 91mobiles` or `--provider gsmarena` to test one source. It commits after each product, skips fresh cache entries, and retries failed products after one day. It is separate from the daily price workflow.
 
 ```bash
 # Check one product without saving

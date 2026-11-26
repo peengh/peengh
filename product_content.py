@@ -1,3 +1,6 @@
+from pricing import available_offers, summarize_offers
+
+
 ACCESSORY_TERMS = ("adapter", "cable", "case", "cover")
 ACCESSORY_TITLE_SQL = "\n            AND ".join(
     "LOWER(p.title) NOT LIKE '%{}%'".format(term) for term in ACCESSORY_TERMS
@@ -32,18 +35,19 @@ def product_type(title):
 
 
 def build_summary_context(product, offers, alternative=None):
-    current_offers = [
-        offer for offer in offers
-        if offer.get("in_stock") and (offer.get("price") or 0) > 0
-    ]
-    prices = [offer["price"] for offer in current_offers]
-    lowest_price = min(prices) if prices else None
-    highest_price = max(prices) if prices else None
-    statuses = {offer.get("pta_status") or "unknown" for offer in current_offers}
+    all_current_offers = available_offers(offers)
+    price_summary = summarize_offers(offers, product.get("price_pta_status"))
+    current_offers = price_summary["offers"]
+    lowest_price = price_summary["lowest_price"] or None
+    highest_price = price_summary["highest_price"] or None
+    statuses = {offer.get("pta_status") or "unknown" for offer in all_current_offers}
 
     alternative_data = dict(alternative) if alternative else None
     price_difference = None
-    if alternative_data and lowest_price and alternative_data.get("lowest_price"):
+    if (
+        alternative_data and lowest_price and alternative_data.get("lowest_price")
+        and alternative_data.get("price_pta_status") == price_summary["price_pta_status"]
+    ):
         price_difference = abs(alternative_data["lowest_price"] - lowest_price)
 
     kind = product_type(product.get("title"))
@@ -51,6 +55,7 @@ def build_summary_context(product, offers, alternative=None):
         "segment": price_segment(lowest_price) if kind == "phone" else None,
         "alternative": alternative_data,
         "price_difference": price_difference,
+        "price_pta_status": price_summary["price_pta_status"],
         "has_pta_approved": "approved" in statuses,
         "has_non_pta": "non_pta" in statuses,
         "has_unknown_pta": "unknown" in statuses,
@@ -70,7 +75,10 @@ def build_comparison_context(product, previous_product=None, next_product=None):
                 continue
             candidate = dict(neighbor)
             candidate_price = candidate.get("lowest_price")
-            if candidate.get("id") == product.get("id") or not candidate_price:
+            if (
+                candidate.get("id") == product.get("id") or not candidate_price
+                or candidate.get("price_pta_status") != product.get("price_pta_status")
+            ):
                 continue
             candidate["price_difference"] = abs(candidate_price - price)
             candidate["slug_a"], candidate["slug_b"] = sorted(
@@ -112,19 +120,21 @@ def _retailer_names(offers):
 
 def build_product_faqs(product, specifications, offers, history):
     title = product["title"]
-    current_offers = [
-        offer for offer in offers
-        if offer.get("in_stock") and (offer.get("price") or 0) > 0
-    ]
+    all_current_offers = available_offers(offers)
+    price_summary = summarize_offers(offers, product.get("price_pta_status"))
+    current_offers = price_summary["offers"]
+    price_category = {
+        "approved": "PTA-approved", "non_pta": "non-PTA", "unknown": "PTA-unspecified",
+    }[price_summary["price_pta_status"]]
     faqs = []
 
     if current_offers:
         lowest_price = min(offer["price"] for offer in current_offers)
         cheapest = [offer for offer in current_offers if offer["price"] == lowest_price]
         answer = (
-            "Among Peengh's current in-stock listings, {} is cheapest at {} at {}. "
+            "Among Peengh's current in-stock {} listings, {} is cheapest at {} at {}. "
             "Prices and availability can change, so confirm the offer on the retailer's page before buying."
-        ).format(title, _format_price(lowest_price), _retailer_names(cheapest))
+        ).format(price_category, title, _format_price(lowest_price), _retailer_names(cheapest))
     else:
         answer = (
             "Peengh has not matched {} to a current in-stock retailer offer, so no store "
@@ -132,9 +142,9 @@ def build_product_faqs(product, specifications, offers, history):
         ).format(title)
     faqs.append({"question": "Where is {} cheapest right now?".format(title), "answer": answer})
 
-    approved = [offer for offer in current_offers if offer.get("pta_status") == "approved"]
-    non_pta = [offer for offer in current_offers if offer.get("pta_status") == "non_pta"]
-    unknown = [offer for offer in current_offers if (offer.get("pta_status") or "unknown") == "unknown"]
+    approved = [offer for offer in all_current_offers if offer.get("pta_status") == "approved"]
+    non_pta = [offer for offer in all_current_offers if offer.get("pta_status") == "non_pta"]
+    unknown = [offer for offer in all_current_offers if (offer.get("pta_status") or "unknown") == "unknown"]
     if approved:
         approved_low = min(offer["price"] for offer in approved)
         approved_high = max(offer["price"] for offer in approved)
@@ -235,10 +245,10 @@ def build_product_faqs(product, specifications, offers, history):
         prices = [row["price"] for row in recorded_prices]
         if len(dates) > 1:
             answer = (
-                "Peengh has recorded retailer price snapshots on {} dates from {} to {}. "
-                "Recorded prices range from {} to {} across tracked retailers. These are historical "
+                "Peengh has recorded {} retailer price snapshots on {} dates from {} to {}. "
+                "Recorded prices range from {} to {} across tracked retailers in the same PTA category. These are historical "
                 "snapshots, not guaranteed current prices, and missing dates mean no snapshot was recorded."
-            ).format(len(dates), dates[0], dates[-1], _format_price(min(prices)), _format_price(max(prices)))
+            ).format(price_category, len(dates), dates[0], dates[-1], _format_price(min(prices)), _format_price(max(prices)))
         else:
             if min(prices) == max(prices):
                 price_wording = "with a recorded price of {}".format(_format_price(min(prices)))
@@ -247,9 +257,9 @@ def build_product_faqs(product, specifications, offers, history):
                     _format_price(min(prices)), _format_price(max(prices))
                 )
             answer = (
-                "Peengh currently has a retailer price snapshot for {}, {}. "
+                "Peengh currently has a {} retailer price snapshot for {}, {}. "
                 "More daily snapshots are needed to establish a trend; these figures are not guaranteed current prices."
-            ).format(dates[0], price_wording)
+            ).format(price_category, dates[0], price_wording)
         faqs.append({"question": "What does the price history of {} show?".format(title), "answer": answer})
 
     if len(faqs) < 3:

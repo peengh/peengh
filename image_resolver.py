@@ -145,7 +145,7 @@ def resolve_image(product_title, product_brand, preferred_storage=None):
     conn = get_db()
     try:
         rows = conn.execute("""
-            SELECT image_url, confidence_score, source, is_verified
+            SELECT image_url, confidence_score, source, source_url, is_verified
             FROM product_images
             WHERE UPPER(brand) = ? AND is_active = 1
               AND (expires_at IS NULL OR expires_at > datetime('now'))

@@ -13,6 +13,15 @@ from catalogue import classify_condition, classify_warranty
 from database import get_db, init_db, seed_retailers, slugify
 from scrapers.utils import classify_pta_status, human_time_ago, parse_timestamp
 from image_resolver import is_usable_product_image, resolve_image, save_scraped_image
+from pricing import (
+    PTA_PRIORITY,
+    annotate_offers,
+    available_offers,
+    normalize_pta_status,
+    pta_label,
+    refresh_product_price_summary,
+    summarize_offers,
+)
 from smart_finder import (
     BRAND_OPTIONS,
     BUDGET_OPTIONS,
@@ -43,6 +52,7 @@ PRICED_PRODUCT_SQL = """
         WHERE available_offer.product_id = p.id
           AND available_offer.in_stock = 1
           AND available_offer.price > 0
+          AND COALESCE(NULLIF(available_offer.pta_status, ''), 'unknown') = p.price_pta_status
     )
 """
 
@@ -98,21 +108,22 @@ def build_product_structured_data(product, offers):
             for key, value in specifications.items()
         ]
 
-    available_offers = [offer for offer in offers if offer["in_stock"] and offer["price"] > 0]
+    summary = summarize_offers(offers, product.get("price_pta_status"))
+    available_offers = summary["offers"]
     if available_offers:
-        prices = [offer["price"] for offer in available_offers]
         data["offers"] = {
             "@type": "AggregateOffer",
             "priceCurrency": "PKR",
-            "lowPrice": min(prices),
-            "highPrice": max(prices),
-            "offerCount": len(available_offers),
+            "lowPrice": summary["lowest_price"],
+            "highPrice": summary["highest_price"],
+            "offerCount": summary["price_offer_count"],
             "offers": [
                 {
                     "@type": "Offer",
                     "url": offer["url"],
                     "priceCurrency": "PKR",
                     "price": offer["price"],
+                    "description": pta_label(offer.get("pta_status")),
                     "availability": "https://schema.org/InStock",
                     **({
                         "itemCondition": "https://schema.org/{}".format({
@@ -158,6 +169,7 @@ def enrich_products_with_images(products):
         if resolved and resolved.get("image_url"):
             p["image_url"] = resolved["image_url"]
             p["image_source"] = resolved.get("source", "")
+            p["image_source_url"] = resolved.get("source_url", "")
             p["image_verified"] = resolved.get("is_verified", 0)
             fallbacks = resolved.get("fallback_urls", [])
         if stored_image and stored_image != p.get("image_url") and stored_image not in fallbacks:
@@ -177,6 +189,7 @@ def inject_helpers():
         "now": datetime.utcnow(),
         "product_placeholder": url_for("static", filename="images/product-placeholder.svg"),
         "absolute_url": absolute_url,
+        "pta_label": pta_label,
     }
 
 
@@ -184,14 +197,27 @@ def inject_helpers():
 # Home
 # ---------------------------------------------------------------------------
 
+HOMEPAGE_BRANDS = ("Apple", "Samsung", "Xiaomi", "Infinix", "Realme", "Vivo", "Honor", "Huawei")
+LOCAL_BRAND_IMAGES = {
+    "Apple": "/static/images/products/apple-iphone-15.jpg",
+    "Samsung": "/static/images/phones/samsung-s24-ultra.png",
+    "Xiaomi": "/static/images/phones/xiaomi-redmi-note-13-pro.png",
+    "Infinix": "/static/images/phones/infinix-note-40-pro.png",
+    "Realme": "/static/images/phones/realme-12-pro-plus.png",
+    "Vivo": "/static/images/products/vivo-x200-pro.webp",
+    "Honor": "/static/images/products/honor-magic-7-pro.avif",
+    "Huawei": "/static/images/products/huawei-mate-70-pro-plus.png",
+}
+
+
 @app.route("/")
 def home():
     conn = get_db_conn()
 
-    # Trending phones with at least one currently usable price
     trending = conn.execute(f"""
         SELECT p.id, p.title, p.brand, p.slug, p.image_url,
-               p.lowest_price, p.highest_price, p.view_count
+               p.lowest_price, p.highest_price, p.price_pta_status, p.price_offer_count,
+               p.view_count
         FROM products p
         WHERE {PRICED_PRODUCT_SQL}
         ORDER BY p.view_count DESC, p.created_at DESC
@@ -199,37 +225,56 @@ def home():
     """).fetchall()
     trending = enrich_products_with_images([dict(r) for r in trending])
 
-    # Latest price drops — products where lowest_price < highest_price (gap exists)
-    price_drops = conn.execute(f"""
+    price_gaps = conn.execute(f"""
         SELECT p.id, p.title, p.brand, p.slug, p.image_url,
-               p.lowest_price, p.highest_price,
+               p.lowest_price, p.highest_price, p.price_pta_status, p.price_offer_count,
                (p.highest_price - p.lowest_price) AS savings
         FROM products p
         WHERE {PRICED_PRODUCT_SQL} AND p.highest_price > p.lowest_price
         ORDER BY savings DESC
         LIMIT 6
     """).fetchall()
-    price_drops = enrich_products_with_images([dict(r) for r in price_drops])
+    price_gaps = enrich_products_with_images([dict(r) for r in price_gaps])
 
-    # Popular brands for category tiles
-    brands = conn.execute(f"""
-        SELECT p.brand, COUNT(*) AS count
-        FROM products p
-        WHERE {PRICED_PRODUCT_SQL}
-        GROUP BY p.brand
-        ORDER BY count DESC
-        LIMIT 8
-    """).fetchall()
+    brands = []
+    for brand_name in HOMEPAGE_BRANDS:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM products WHERE brand = ?", (brand_name,)
+        ).fetchone()[0]
+        representatives = conn.execute("""
+            SELECT id, title, brand, slug, image_url, storage
+            FROM products WHERE brand = ?
+            ORDER BY CASE
+                         WHEN image_url LIKE '/static/%' THEN 0
+                         WHEN lowest_price > 0 THEN 1
+                         ELSE 2
+                     END,
+                     view_count DESC, created_at DESC
+            LIMIT 25
+        """, (brand_name,)).fetchall()
+        image_url = ""
+        image_fallbacks = []
+        for representative in representatives:
+            enriched = enrich_products_with_images([dict(representative)])[0]
+            if enriched.get("image_url"):
+                image_url = enriched["image_url"]
+                image_fallbacks = enriched.get("image_fallbacks", [])
+                break
+        local_image = LOCAL_BRAND_IMAGES.get(brand_name)
+        if local_image:
+            image_url = local_image
+            image_fallbacks = []
+        brands.append({
+            "brand": brand_name, "count": count,
+            "image_url": image_url, "image_fallbacks": image_fallbacks,
+        })
     stats = conn.execute(f"""
         SELECT
             (SELECT COUNT(*) FROM products p WHERE {PRICED_PRODUCT_SQL}) AS products,
             (SELECT COUNT(DISTINCT retailer_id) FROM offers
              WHERE in_stock = 1 AND price > 0) AS retailers,
-            (SELECT COUNT(*) FROM (
-                SELECT product_id FROM offers
-                WHERE in_stock = 1 AND price > 0
-                GROUP BY product_id HAVING COUNT(*) >= 2
-            )) AS comparisons
+            (SELECT COUNT(*) FROM products p
+             WHERE {PRICED_PRODUCT_SQL} AND p.price_offer_count >= 2) AS multi_store_phones
     """).fetchone()
 
     conn.close()
@@ -237,9 +282,9 @@ def home():
 
     return render_template(
         "home.html",
-        trending=[dict(r) for r in trending],
-        price_drops=[dict(r) for r in price_drops],
-        brands=[dict(r) for r in brands],
+        trending=trending,
+        price_gaps=price_gaps,
+        brands=brands,
         stats=stats,
     )
 
@@ -350,7 +395,7 @@ def device_catalogue(device_category):
     # Products
     products = conn.execute(f"""
         SELECT p.id, p.title, p.brand, p.slug, p.image_url,
-               p.lowest_price, p.highest_price, p.storage, p.ram, p.view_count,
+               p.lowest_price, p.highest_price, p.price_pta_status, p.price_offer_count, p.storage, p.ram, p.view_count,
                p.device_category
         FROM products p
         WHERE {where_sql}
@@ -497,8 +542,10 @@ def product(slug):
         FROM offers o
         JOIN retailers r ON o.retailer_id = r.id
         WHERE o.product_id = ?
-        ORDER BY o.in_stock DESC, o.price ASC
-    """, (product["id"],)).fetchall()
+        ORDER BY o.in_stock DESC,
+                 CASE WHEN COALESCE(NULLIF(o.pta_status, ''), 'unknown') = ? THEN 0 ELSE 1 END,
+                 o.price ASC
+    """, (product["id"], product.get("price_pta_status"))).fetchall()
 
     # Check if any price is stale (> 1 hour)
     stale_threshold = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -525,19 +572,25 @@ def product(slug):
         FROM price_history ph
         JOIN retailers r ON ph.retailer_id = r.id
         WHERE ph.product_id = ? AND ph.date >= date('now', '-30 days')
+          AND COALESCE(NULLIF(ph.pta_status, ''), 'unknown') = ?
         ORDER BY ph.date ASC
-    """, (product["id"],)).fetchall()
+    """, (product["id"], product.get("price_pta_status"))).fetchall()
 
     product = enrich_products_with_images([product])[0]
 
     # Similar phones — same brand, different model, closest price
     similar = conn.execute(f"""
-        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price,
+               p.price_pta_status, p.price_offer_count
         FROM products p
         WHERE {PRICED_PRODUCT_SQL} AND p.brand = ? AND p.id != ?
+          AND p.price_pta_status = ?
         ORDER BY ABS(p.lowest_price - ?) ASC
         LIMIT 6
-    """, (product["brand"], product["id"], product.get("lowest_price", 0) or 0)).fetchall()
+    """, (
+        product["brand"], product["id"], product.get("price_pta_status"),
+        product.get("lowest_price", 0) or 0,
+    )).fetchall()
     similar = enrich_products_with_images([dict(r) for r in similar])
 
     previous_product = None
@@ -545,8 +598,8 @@ def product(slug):
     segment = price_segment(product.get("lowest_price"))
     if segment and product_type(product["title"]) == "phone":
         lower_bound, upper_bound = segment_bounds(segment)
-        comparison_where = [PRICED_PRODUCT_SQL, ACCESSORY_TITLE_SQL]
-        comparison_params = []
+        comparison_where = [PRICED_PRODUCT_SQL, ACCESSORY_TITLE_SQL, "p.price_pta_status = ?"]
+        comparison_params = [product.get("price_pta_status")]
         if lower_bound is not None:
             comparison_where.append("p.lowest_price >= ?")
             comparison_params.append(lower_bound)
@@ -554,7 +607,8 @@ def product(slug):
             comparison_where.append("p.lowest_price <= ?")
             comparison_params.append(upper_bound)
         comparison_select = f"""
-            SELECT p.id, p.title, p.brand, p.slug, p.lowest_price
+            SELECT p.id, p.title, p.brand, p.slug, p.lowest_price,
+                   p.price_pta_status, p.price_offer_count
             FROM products p
             WHERE {{where_sql}}
         """
@@ -597,8 +651,11 @@ def product(slug):
             "price": h["price"],
         })
 
-    offer_dicts = [dict(o) for o in offers]
-    store_count = sum(1 for offer in offer_dicts if offer["in_stock"] and offer["price"] > 0)
+    offer_dicts = annotate_offers(
+        [dict(o) for o in offers], product.get("price_pta_status")
+    )
+    store_count = product.get("price_offer_count", 0)
+    primary_offer = next((offer for offer in offer_dicts if offer.get("is_lowest")), None)
     specifications = load_product_specifications(product)
     summary = build_summary_context(product, offer_dicts, alternative)
     faqs = build_product_faqs(product, specifications, offer_dicts, history_rows)
@@ -610,6 +667,7 @@ def product(slug):
         history_json=json.dumps(history_by_retailer),
         has_stale=has_stale,
         store_count=store_count,
+        primary_offer=primary_offer,
         specifications=specifications,
         summary=summary,
         comparison=comparison,
@@ -646,7 +704,8 @@ def compare(slug_a, slug_b):
     products = [dict(r) for r in rows]
     products = enrich_products_with_images(products)
 
-    # Get offers for both
+    product_offers = {}
+    status_sets = []
     for p in products:
         offers = conn.execute("""
             SELECT o.*, r.name AS retailer_name, r.slug AS retailer_slug
@@ -655,12 +714,33 @@ def compare(slug_a, slug_b):
             WHERE o.product_id = ?
             ORDER BY o.in_stock DESC, o.price ASC
         """, (p["id"],)).fetchall()
-        p["offers"] = [dict(o) for o in offers]
+        product_offers[p["id"]] = [dict(o) for o in offers]
+        status_sets.append({
+            normalize_pta_status(offer.get("pta_status"))
+            for offer in available_offers(product_offers[p["id"]])
+        })
+
+    common_statuses = set.intersection(*status_sets)
+    comparison_status = next(
+        (status for status in PTA_PRIORITY if status in common_statuses), None
+    )
+    for p in products:
+        if comparison_status:
+            summary = summarize_offers(product_offers[p["id"]], comparison_status)
+        else:
+            summary = {
+                "lowest_price": 0, "highest_price": 0,
+                "price_pta_status": "unknown", "price_offer_count": 0, "offers": [],
+            }
+        p.update({key: value for key, value in summary.items() if key != "offers"})
+        p["offers"] = annotate_offers(summary["offers"], comparison_status)
 
     conn.close()
     g.pop("_database", None)
 
-    return render_template("compare.html", products=products)
+    return render_template(
+        "compare.html", products=products, comparison_status=comparison_status
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -673,10 +753,10 @@ def brand_page(brand):
 
     products = conn.execute(f"""
         SELECT p.id, p.title, p.brand, p.slug, p.image_url,
-               p.lowest_price, p.highest_price, p.storage, p.ram
+               p.lowest_price, p.highest_price, p.price_pta_status, p.price_offer_count, p.storage, p.ram
         FROM products p
-        WHERE {PRICED_PRODUCT_SQL} AND p.brand = ?
-        ORDER BY p.lowest_price ASC
+        WHERE p.brand = ?
+        ORDER BY CASE WHEN p.lowest_price > 0 THEN 0 ELSE 1 END, p.lowest_price ASC
     """, (brand,)).fetchall()
     products = enrich_products_with_images([dict(r) for r in products])
 
@@ -737,7 +817,7 @@ def search():
 
     results = conn.execute(f"""
         SELECT DISTINCT p.id, p.title, p.brand, p.slug, p.image_url,
-                        p.lowest_price, p.highest_price, p.storage, p.ram
+                        p.lowest_price, p.highest_price, p.price_pta_status, p.price_offer_count, p.storage, p.ram
         FROM products p
         WHERE {PRICED_PRODUCT_SQL} AND ({where_sql})
         ORDER BY
@@ -771,7 +851,8 @@ def search_suggestions():
     squashed = q.replace(" ", "").replace("-", "")
 
     results = conn.execute(f"""
-        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price, p.storage
+        SELECT p.id, p.title, p.brand, p.slug, p.image_url, p.lowest_price,
+               p.price_pta_status, p.price_offer_count, p.storage
         FROM products p
         WHERE {PRICED_PRODUCT_SQL} AND (
             p.title LIKE ? OR p.brand LIKE ? OR p.match_key LIKE ?
@@ -833,23 +914,25 @@ def refresh_price(product_id):
                 if result.get("error") or not result.get("price"):
                     continue
                 offer_title = result.get("title") or offer["title"]
+                pta_status = classify_pta_status(offer_title, offer["retailer_slug"])
                 conn.execute("""
                     UPDATE offers
                     SET price = ?, in_stock = ?, last_checked = CURRENT_TIMESTAMP,
                         title = COALESCE(?, title), pta_status = ?, warranty = ?, condition = ?
                     WHERE id = ?
                 """, (result["price"], result.get("in_stock", True),
-                      result.get("title"), classify_pta_status(offer_title, offer["retailer_slug"]),
+                      result.get("title"), pta_status,
                       classify_warranty(offer_title), classify_condition(offer_title),
                       offer["id"]))
                 conn.execute("""
                     INSERT INTO price_history
-                        (product_id, retailer_id, offer_id, price, date)
-                    VALUES (?, ?, ?, ?, date('now'))
+                        (product_id, retailer_id, offer_id, pta_status, price, date)
+                    VALUES (?, ?, ?, ?, ?, date('now'))
                     ON CONFLICT(product_id, retailer_id, date) DO UPDATE SET
                         offer_id = excluded.offer_id,
+                        pta_status = excluded.pta_status,
                         price = excluded.price
-                """, (product_id, offer["retailer_id"], offer["id"], result["price"]))
+                """, (product_id, offer["retailer_id"], offer["id"], pta_status, result["price"]))
                 if image_result is None and result.get("image_url"):
                     image_result = (offer, result)
             except Exception as e:
@@ -877,35 +960,30 @@ def refresh_price(product_id):
             """, (result["image_url"], product_id))
             conn.commit()
 
-    # Re-fetch updated offers
+    product = conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
     offers = conn.execute("""
         SELECT o.*, r.name AS retailer_name, r.slug AS retailer_slug, r.domain
         FROM offers o
         JOIN retailers r ON o.retailer_id = r.id
         WHERE o.product_id = ?
-        ORDER BY o.in_stock DESC, o.price ASC
-    """, (product_id,)).fetchall()
+        ORDER BY o.in_stock DESC,
+                 CASE WHEN COALESCE(NULLIF(o.pta_status, ''), 'unknown') = ? THEN 0 ELSE 1 END,
+                 o.price ASC
+    """, (product_id, product["price_pta_status"])).fetchall()
 
     conn.close()
     g.pop("_database", None)
 
-    return render_template("partials/price_table.html", offers=[dict(o) for o in offers])
+    offer_dicts = annotate_offers([dict(o) for o in offers], product["price_pta_status"])
+    return render_template(
+        "partials/price_table.html", offers=offer_dicts,
+        price_pta_status=product["price_pta_status"],
+    )
 
 
 def _update_product_prices(conn, product_id):
-    """Recalculate lowest/highest price for a product."""
-    row = conn.execute("""
-        SELECT MIN(price) AS low, MAX(price) AS high
-        FROM offers
-        WHERE product_id = ? AND in_stock = 1 AND price > 0
-    """, (product_id,)).fetchone()
-    if row:
-        conn.execute("""
-            UPDATE products
-            SET lowest_price = ?, highest_price = ?
-            WHERE id = ?
-        """, (row["low"], row["high"], product_id))
-        conn.commit()
+    refresh_product_price_summary(conn, product_id)
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -916,7 +994,7 @@ def _update_product_prices(conn, product_id):
 def sitemap():
     conn = get_db_conn()
     rows = [dict(row) for row in conn.execute(f"""
-        SELECT p.id, p.title, p.brand, p.slug, p.lowest_price, p.updated_at
+        SELECT p.id, p.title, p.brand, p.slug, p.lowest_price, p.price_pta_status, p.updated_at
         FROM products p
         WHERE {PRICED_PRODUCT_SQL}
         ORDER BY p.brand, p.lowest_price, p.slug
@@ -943,13 +1021,13 @@ def sitemap():
     by_segment = {}
     for row in rows:
         add_entry(url_for("product", slug=row["slug"]), row["updated_at"])
-        by_brand.setdefault(row["brand"], []).append(row)
+        by_brand.setdefault((row["brand"], row["price_pta_status"]), []).append(row)
         if product_type(row["title"]) == "phone":
             segment = price_segment(row["lowest_price"])
-            by_segment.setdefault(segment, []).append(row)
+            by_segment.setdefault((segment, row["price_pta_status"]), []).append(row)
 
     comparisons = set()
-    for brand, products in by_brand.items():
+    for (brand, _status), products in by_brand.items():
         add_entry(url_for("brand_page", brand=brand))
         products.sort(key=lambda row: (row["lowest_price"], row["slug"]))
         for first, second in zip(products, products[1:]):

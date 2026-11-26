@@ -38,6 +38,9 @@
     {% if non_pta %}Non-PTA listings may require DIRBS registration and applicable taxes before local cellular use. Confirm the device IMEI and current registration charges before buying.
     {% elif approved %}PTA approval is listing-specific. Confirm the retailer's claim and verify the device IMEI before buying.
     {% else %}PTA status can vary by retailer and device. Confirm the listing and verify the device IMEI before buying.{% endif %}
-    Specifications are cached from the linked retailer source and should be confirmed with the manufacturer.
+    Specifications are cached from the linked source and should be confirmed with the manufacturer.
+    {% if product.specs_source and product.specs_source.lower() == 'gsmarena' %}Specifications: GSMArena, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" class="text-peengh-teal hover:underline">CC BY 4.0 attribution</a>.{% endif %}
+    {% set image_source_names = {'gsmarena': 'GSMArena', '91mobiles': '91mobiles', 'huawei_official': 'Huawei', 'vivo_official': 'Vivo', 'honor_official': 'Honor'} %}
+    {% if product.image_source in image_source_names %}Product image: <a href="{{ product.image_source_url or product.specs_source_url }}" target="_blank" rel="noopener" class="text-peengh-teal hover:underline">{{ image_source_names[product.image_source] }}</a>, cached locally by Peengh.{% endif %}
   </p>
 </div>

@@ -1,4 +1,6 @@
 {% if offers %}
+{% set primary_pta_status = product.price_pta_status if product is defined else price_pta_status %}
+<p class="text-xs text-gray-500 mb-4">The main price, savings, and LOWEST badge use {{ pta_label(primary_pta_status).lower() }} listings only. Other PTA categories remain separately labelled.</p>
 <!-- Desktop Table -->
 <div class="hidden sm:block overflow-x-auto">
   <table class="w-full text-sm">
@@ -14,17 +16,17 @@
     </thead>
     <tbody>
       {% for o in offers %}
-      <tr class="border-b border-gray-50 {% if loop.first %}bg-peengh-teal/5{% endif %}">
+      <tr class="border-b border-gray-50 {% if o.is_lowest %}bg-peengh-teal/5{% endif %}">
         <td class="py-3 px-3">
           <div class="flex items-center gap-2">
             <span class="font-semibold text-gray-800">{{ o.retailer_name }}</span>
-            {% if loop.first %}
+            {% if o.is_lowest %}
             <span class="px-1.5 py-0.5 bg-peengh-teal text-white text-[10px] font-bold rounded">LOWEST</span>
             {% endif %}
           </div>
         </td>
         <td class="py-3 px-3">
-          <span class="font-bold {% if loop.first %}text-peengh-teal text-base{% else %}text-gray-800{% endif %}">
+          <span class="font-bold {% if o.is_lowest %}text-peengh-teal text-base{% else %}text-gray-800{% endif %}">
             Rs {{ "{:,}".format(o.price) }}
           </span>
         </td>
@@ -67,11 +69,11 @@
 <!-- Mobile Stacked Cards -->
 <div class="sm:hidden space-y-3">
   {% for o in offers %}
-  <div class="border border-gray-100 rounded-xl p-3 {% if loop.first %}bg-peengh-teal/5 border-peengh-teal/20{% else %}bg-white{% endif %}">
+  <div class="border border-gray-100 rounded-xl p-3 {% if o.is_lowest %}bg-peengh-teal/5 border-peengh-teal/20{% else %}bg-white{% endif %}">
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-2">
         <span class="font-semibold text-sm text-gray-800">{{ o.retailer_name }}</span>
-        {% if loop.first %}
+        {% if o.is_lowest %}
         <span class="px-1.5 py-0.5 bg-peengh-teal text-white text-[10px] font-bold rounded">LOWEST</span>
         {% endif %}
       </div>
@@ -82,7 +84,7 @@
       {% endif %}
     </div>
     <div class="flex items-baseline gap-2 mb-2">
-      <span class="text-lg font-extrabold {% if loop.first %}text-peengh-teal{% else %}text-gray-800{% endif %}">
+      <span class="text-lg font-extrabold {% if o.is_lowest %}text-peengh-teal{% else %}text-gray-800{% endif %}">
         Rs {{ "{:,}".format(o.price) }}
       </span>
     </div>

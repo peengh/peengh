@@ -47,6 +47,7 @@
         <span class="text-[10px] text-gray-400 line-through">Rs {{ "{:,}".format(p.highest_price) }}</span>
         {% endif %}
       </div>
+      <p class="text-[10px] text-gray-500 mt-1">{{ pta_label(p.price_pta_status) }}</p>
       {% if p.storage %}
       <span class="inline-block mt-1 text-[10px] text-gray-500">{{ p.storage }}{% if p.ram %} · {{ p.ram }}{% endif %}</span>
       {% endif %}

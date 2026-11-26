@@ -17,6 +17,7 @@ from catalogue import (
     sync_catalogue_master,
 )
 from database import DATABASE, get_db, init_db, seed_retailers, seed_official_images, slugify
+from pricing import refresh_product_price_summary
 from scrapers.utils import classify_pta_status, parse_ram, parse_storage
 from scrapers.feeds import configured_feeds, fetch_feed
 from scrapers.telex import scrape_category as scrape_telex
@@ -229,9 +230,10 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
         WHERE product_id = ? AND retailer_id = ?
         ORDER BY id LIMIT 1
     """, (product_id, retailer_id)).fetchone()
+    pta_status = classify_pta_status(offer["title"], offer.get("store"))
     values = (
         offer["title"], offer["price"], offer["url"],
-        offer.get("in_stock", True), classify_pta_status(offer["title"], offer.get("store")),
+        offer.get("in_stock", True), pta_status,
         classify_warranty(offer["title"]), classify_condition(offer["title"]), now, now,
     )
     if existing:
@@ -252,28 +254,18 @@ def _upsert_offer(cursor, product_id, retailer_id, offer, now):
         offer_id = cursor.lastrowid
 
     cursor.execute("""
-        INSERT INTO price_history (product_id, retailer_id, offer_id, price, date)
-        VALUES (?, ?, ?, ?, date('now'))
+        INSERT INTO price_history (product_id, retailer_id, offer_id, pta_status, price, date)
+        VALUES (?, ?, ?, ?, ?, date('now'))
         ON CONFLICT(product_id, retailer_id, date) DO UPDATE SET
             offer_id = excluded.offer_id,
+            pta_status = excluded.pta_status,
             price = excluded.price
-    """, (product_id, retailer_id, offer_id, offer["price"]))
+    """, (product_id, retailer_id, offer_id, pta_status, offer["price"]))
     return offer_id
 
 
 def _update_prices(cursor, product_id):
-    cursor.execute("""
-        UPDATE products
-        SET lowest_price = COALESCE((
-                SELECT MIN(price) FROM offers
-                WHERE product_id = ? AND in_stock = 1 AND price > 0
-            ), 0),
-            highest_price = COALESCE((
-                SELECT MAX(price) FROM offers
-                WHERE product_id = ? AND in_stock = 1 AND price > 0
-            ), 0)
-        WHERE id = ?
-    """, (product_id, product_id, product_id))
+    refresh_product_price_summary(cursor.connection, product_id)
 
 
 def apply_updates(groups, retailers, successful_stores):

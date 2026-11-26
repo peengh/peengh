@@ -60,8 +60,8 @@
         <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Retailers</p>
       </div>
       <div>
-        <p class="text-2xl sm:text-3xl font-extrabold text-peengh-navy">{{ stats.comparisons }}</p>
-        <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Comparisons</p>
+        <p class="text-2xl sm:text-3xl font-extrabold text-peengh-navy">{{ stats.multi_store_phones }}</p>
+        <p class="text-xs sm:text-sm text-gray-500 uppercase tracking-wider mt-1">Multi-store phones</p>
       </div>
     </div>
   </div>
@@ -75,8 +75,12 @@
       All Mobiles
     </a>
     {% for b in brands %}
-    <a href="/brands/{{ b.brand }}" class="flex-shrink-0 bg-white rounded-xl px-5 py-3 shadow-sm border border-gray-100 tap-target hover:shadow-md hover:border-peengh-amber transition text-sm font-semibold text-peengh-navy">
-      {{ b.brand }}
+    <a href="/brands/{{ b.brand }}" class="flex-shrink-0 w-28 bg-white rounded-xl p-3 shadow-sm border border-gray-100 tap-target hover:shadow-md hover:border-peengh-amber transition text-sm font-semibold text-peengh-navy text-center">
+      <span class="block w-16 h-16 mx-auto mb-2 bg-gray-50 rounded-lg overflow-hidden">
+        <img src="{{ b.image_url or product_placeholder }}" alt="{{ b.brand }} phone" loading="lazy" class="w-full h-full object-contain" data-fallbacks="{{ b.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
+      </span>
+      <span class="block">{{ b.brand }}</span>
+      <span class="block text-[10px] font-normal text-gray-400 mt-0.5">{{ b.count }} model{{ 's' if b.count != 1 else '' }}</span>
     </a>
     {% endfor %}
   </div>
@@ -102,6 +106,7 @@
         <span class="text-[10px] sm:text-xs text-gray-400 line-through">Rs {{ "{:,}".format(p.highest_price) }}</span>
         {% endif %}
       </div>
+      <p class="text-[10px] text-gray-500 mt-1">{{ pta_label(p.price_pta_status) }}</p>
       {% if p.highest_price and p.highest_price > p.lowest_price %}
       <span class="inline-block mt-1 text-[10px] font-semibold text-peengh-terra bg-peengh-terra/10 px-1.5 py-0.5 rounded">
         Save Rs {{ "{:,}".format(p.highest_price - p.lowest_price) }}
@@ -112,14 +117,15 @@
   </div>
 </section>
 
-<!-- Price Drops -->
-{% if price_drops %}
+<!-- Store Price Gaps -->
+{% if price_gaps %}
 <section class="max-w-[1200px] mx-auto px-4 py-6">
   <div class="flex items-center justify-between mb-4">
-    <h2 class="text-lg sm:text-xl font-bold text-peengh-navy">Latest Price Drops</h2>
+    <h2 class="text-lg sm:text-xl font-bold text-peengh-navy">Biggest Store Price Gaps</h2>
+    <p class="text-xs text-gray-500">Compared only within the same PTA category</p>
   </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-    {% for p in price_drops %}
+    {% for p in price_gaps %}
     <a href="/mobiles/{{ p.slug }}" class="bg-white rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 hover:shadow-md hover:border-peengh-terra transition flex gap-3 tap-target">
       <div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
         <img src="{{ p.image_url or product_placeholder }}" alt="{{ p.title }}" loading="lazy" class="w-full h-full object-contain" data-fallbacks="{{ p.image_fallbacks|tojson|forceescape }}" data-placeholder="{{ product_placeholder }}" onerror="handleProductImageError(this)">
@@ -133,6 +139,7 @@
         <span class="inline-block mt-1.5 text-xs font-semibold text-peengh-terra bg-peengh-terra/10 px-2 py-0.5 rounded-full">
           Save Rs {{ "{:,}".format(p.savings) }}
         </span>
+        <p class="text-[10px] text-gray-500 mt-1">{{ pta_label(p.price_pta_status) }}</p>
       </div>
     </a>
     {% endfor %}
@@ -162,8 +169,8 @@
         <div class="w-12 h-12 bg-peengh-terra/20 rounded-full flex items-center justify-center mx-auto mb-3">
           <svg class="w-6 h-6 text-peengh-terra" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
-        <h3 class="font-semibold text-sm">Best Deals First</h3>
-        <p class="text-xs text-gray-300 mt-1">Lowest price always on top</p>
+        <h3 class="font-semibold text-sm">Like-for-Like Prices</h3>
+        <p class="text-xs text-gray-300 mt-1">Compared within the same PTA category</p>
       </div>
     </div>
   </div>

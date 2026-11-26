@@ -7,7 +7,7 @@
     <div class="flex-1 min-w-0">
       <div class="text-sm font-medium text-gray-800 truncate">{{ r.title }}</div>
       <div class="text-xs text-gray-500">
-        {% if r.lowest_price %}From Rs {{ "{:,}".format(r.lowest_price) }}{% endif %}
+        {% if r.lowest_price %}From Rs {{ "{:,}".format(r.lowest_price) }} · {{ pta_label(r.price_pta_status) }}{% endif %}
         {% if r.storage %}· {{ r.storage }}{% endif %}
       </div>
     </div>

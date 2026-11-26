@@ -127,16 +127,15 @@
             <span class="text-[10px] text-gray-400 line-through">Rs {{ "{:,}".format(p.highest_price) }}</span>
             {% endif %}
           </div>
+          <p class="text-[10px] text-gray-500 mt-1">{{ pta_label(p.price_pta_status) }}</p>
           {% if p.highest_price and p.highest_price > p.lowest_price %}
           <span class="inline-block mt-1 text-[10px] font-semibold text-peengh-terra bg-peengh-terra/10 px-1.5 py-0.5 rounded">
             Save Rs {{ "{:,}".format(p.highest_price - p.lowest_price) }}
           </span>
           {% endif %}
-          {% if p.highest_price and p.highest_price > p.lowest_price %}
-          <p class="text-[10px] text-gray-400 mt-1">Save Rs {{ "{:,}".format(p.highest_price - p.lowest_price) }}</p>
-          {% else %}
-          <p class="text-[10px] text-gray-400 mt-1">Compare prices</p>
-          {% endif %}
+          <p class="text-[10px] text-gray-400 mt-1">
+            {% if p.price_offer_count > 1 %}Compare {{ p.price_offer_count }} same-category prices{% else %}1 store price{% endif %}
+          </p>
         </a>
         {% endfor %}
       </div>

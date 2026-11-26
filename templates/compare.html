@@ -11,7 +11,12 @@
     <span class="text-gray-800 font-medium">Compare</span>
   </nav>
 
-  <h1 class="text-xl sm:text-2xl font-bold text-peengh-navy mb-6">Side-by-Side Comparison</h1>
+  <h1 class="text-xl sm:text-2xl font-bold text-peengh-navy mb-2">Side-by-Side Comparison</h1>
+  {% if comparison_status %}
+  <p class="text-sm text-gray-500 mb-6">Prices below use only {{ pta_label(comparison_status).lower() }} listings for both phones.</p>
+  {% else %}
+  <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-4 mb-6 text-sm">These phones have no current offers in a shared PTA category, so no cross-category price comparison is shown. You can still compare their specifications.</div>
+  {% endif %}
 
   <!-- Compare Cards -->
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -24,7 +29,7 @@
       <p class="text-sm text-gray-500 mb-3">{{ p.brand }}</p>
 
       <div class="bg-peengh-teal/10 rounded-xl p-3 mb-4">
-        <p class="text-xs text-gray-500">Lowest Price</p>
+        <p class="text-xs text-gray-500">{% if comparison_status %}Lowest {{ pta_label(comparison_status).lower() }} price{% else %}Price comparison unavailable{% endif %}</p>
         <p class="text-xl font-extrabold text-peengh-teal">Rs {{ "{:,}".format(p.lowest_price) if p.lowest_price else "N/A" }}</p>
       </div>
 
@@ -55,13 +60,13 @@
       <!-- Store prices -->
       <div class="mt-4 space-y-2">
         {% for o in p.offers %}
-        <div class="flex items-center justify-between py-2 {% if loop.first %}bg-peengh-teal/5 rounded-lg px-2{% endif %}">
+        <div class="flex items-center justify-between py-2 {% if o.is_lowest %}bg-peengh-teal/5 rounded-lg px-2{% endif %}">
           <div>
             <span class="text-sm font-medium">{{ o.retailer_name }}</span>
-            {% if loop.first %}<span class="ml-1 text-[10px] bg-peengh-teal text-white px-1 rounded">LOWEST</span>{% endif %}
+            {% if o.is_lowest %}<span class="ml-1 text-[10px] bg-peengh-teal text-white px-1 rounded">LOWEST</span>{% endif %}
           </div>
           <div class="text-right">
-            <span class="text-sm font-bold {% if loop.first %}text-peengh-teal{% else %}text-gray-800{% endif %}">Rs {{ "{:,}".format(o.price) }}</span>
+            <span class="text-sm font-bold {% if o.is_lowest %}text-peengh-teal{% else %}text-gray-800{% endif %}">Rs {{ "{:,}".format(o.price) }}</span>
           </div>
         </div>
         {% endfor %}
